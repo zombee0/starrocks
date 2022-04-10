@@ -25,7 +25,7 @@ public:
 
     NullableColumn(const NullableColumn& rhs)
             : _data_column(rhs._data_column->clone_shared()),
-              _null_column(std::static_pointer_cast<NullColumn>(rhs._null_column->clone_shared())),
+              _null_column(rhs._null_column->clone_shared_derived()),
               _has_null(rhs._has_null) {}
 
     NullableColumn(NullableColumn&& rhs) noexcept

@@ -3,6 +3,8 @@
 #include <memory>
 #include <vector>
 
+#include "column/COW.h"
+
 #pragma once
 
 namespace starrocks {
@@ -19,9 +21,6 @@ class DateValue;
 class TimestampValue;
 
 typedef __int128 int128_t;
-
-template <typename T>
-class COW;
 
 class Chunk;
 class Field;
@@ -49,8 +48,8 @@ class DecimalV3Column;
 template <typename T>
 class BinaryColumnBase;
 
-using ColumnPtr =  COW<Column>::Ptr;
-using MutableColumnPtr = COW<Column>::MutablePtr;
+using ColumnPtr = typename COW<Column>::Ptr;
+using MutableColumnPtr = typename COW<Column>::MutablePtr;
 using Columns = std::vector<ColumnPtr>;
 using MutableColumns = std::vector<MutableColumnPtr>;
 

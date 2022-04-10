@@ -19,7 +19,7 @@ public:
 
     ArrayColumn(const ArrayColumn& rhs)
             : _elements(rhs._elements->clone_shared()),
-              _offsets(std::static_pointer_cast<UInt32Column>(rhs._offsets->clone_shared())) {}
+              _offsets(rhs._offsets->clone_shared_derived()) {}
 
     ArrayColumn(ArrayColumn&& rhs) noexcept : _elements(std::move(rhs._elements)), _offsets(std::move(rhs._offsets)) {}
 

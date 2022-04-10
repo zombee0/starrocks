@@ -180,7 +180,16 @@ public:
     template <PrimitiveType Type>
     static inline typename RunTimeColumnType<Type>::Ptr cast_to(const ColumnPtr& value) {
         down_cast<RunTimeColumnType<Type>*>(value.get());
-        return std::static_pointer_cast<RunTimeColumnType<Type>>(value);
+        //return std::static_pointer_cast<RunTimeColumnType<Type>>(value);
+        return typename RunTimeColumnType<Type>::Ptr(static_cast<RunTimeColumnType<Type>*>(value.get()));
+    }
+
+    /**
+     * Cast Column* to ColumnPtr 
+     *  
+     */
+    static inline ColumnPtr cast_to_ptr(const Column* column) {
+        return ColumnPtr(const_cast<Column *>(column));
     }
 
     /**
@@ -203,7 +212,8 @@ public:
      */
     template <typename Type>
     static inline typename Type::Ptr as_column(ColumnPtr value) {
-        return std::static_pointer_cast<Type>(value);
+        //return std::static_pointer_cast<Type>(value);
+        return typename Type::Ptr(static_cast<Type*>(value.get()));
     }
 
     /**

@@ -29,6 +29,8 @@
 #include <string>
 #include <vector>
 
+#include "column/COW.h"
+#include "column/column.h"
 #include "udf/udf.h"
 
 namespace starrocks {
@@ -40,7 +42,7 @@ class RuntimeState;
 namespace vectorized {
 class Column;
 class JavaUDAFContext;
-using ColumnPtr = std::shared_ptr<Column>;
+using ColumnPtr = typename COW<Column>::Ptr;
 } // namespace vectorized
 
 // This class actually implements the interface of FunctionContext. This is split to
@@ -75,7 +77,7 @@ public:
 
     void set_constant_args(const std::vector<starrocks_udf::AnyVal*>& constant_args);
 
-    void set_constant_columns(std::vector<vectorized::ColumnPtr> columns) { _constant_columns = std::move(columns); }
+    void set_constant_columns(std::vector<vectorized::ColumnPtr> columns) { _constant_columns = std::move(columns); } //std::move(columns)
 
     uint8_t* varargs_buffer() { return _varargs_buffer; }
 

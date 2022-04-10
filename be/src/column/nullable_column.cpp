@@ -17,7 +17,7 @@ NullableColumn::NullableColumn(MutableColumnPtr&& data_column, MutableColumnPtr&
     DCHECK(!null_column->is_constant() && !null_column->is_nullable())
             << "nullable column's data must be single column";
     ColumnPtr ptr = std::move(null_column);
-    _null_column = std::static_pointer_cast<NullColumn>(ptr);
+    _null_column = ColumnHelper::as_column<NullColumn>(ptr);
     _has_null = SIMD::count_nonzero(_null_column->get_data());
 }
 
