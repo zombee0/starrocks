@@ -36,6 +36,27 @@ struct TransmitChunkInfo {
 struct ClosureContext {
     TUniqueId instance_id;
     int64_t sequence;
+    int64_t send_timestamp;
+};
+
+// TimeTrace is introduced to estimate time more accurately.
+// For every update
+// 1. times will be increased by 1.
+// 2. sample time will be accumulated to accumulated_time.
+// 3. sample concurrency will be accumulated to accumulated_concurrency.
+// So we can get the average time of each direction by
+// `average_concurrency = accumulated_concurrency / times`
+// `average_time = accumulated_time / average_concurrency`
+struct TimeTrace {
+    int32_t times = 0;
+    int64_t accumulated_time = 0;
+    int32_t accumulated_concurrency = 0;
+
+    void update(int64_t time, int32_t concurrency) {
+        times++;
+        accumulated_time += time;
+        accumulated_concurrency += concurrency;
+    }
 };
 
 // TODO(hcf) how to export brpc error
@@ -45,16 +66,14 @@ public:
                bool is_dest_merge, size_t num_sinkers);
     ~SinkBuffer();
 
-    void add_request(const TransmitChunkInfo& request);
+    void add_request(TransmitChunkInfo& request);
     bool is_full() const;
+
+    void set_finishing();
     bool is_finished() const;
 
-    // Roughly estimate network time
-    // For each destination, we may send multiply packages at the same time,
-    // but it's hard to calculate the actual average concurrency. So, for simplicity,
-    // we just sum the network time for each destination, and pick the maximum one
-    // among all destinations as the overall network time
-    int64_t network_time();
+    // Add counters to the given profile
+    void update_profile(RuntimeProfile* profile);
 
     // When all the ExchangeSinkOperator shared this SinkBuffer are cancelled,
     // the rest chunk request and EOS request needn't be sent anymore.
@@ -69,6 +88,14 @@ private:
     // _discontinuous_acked_seqs[x] stored the received discontinuous acks
     void _process_send_window(const TUniqueId& instance_id, const int64_t sequence);
     void _try_to_send_rpc(const TUniqueId& instance_id);
+
+    // Roughly estimate network time which is defined as the time between sending a and receiving a packet,
+    // and the processing time of both sides are excluded
+    // For each destination, we may send multiply packages at the same time, and the time is
+    // related to the degree of concurrency, so the network_time will be calculated as
+    // `accumulated_network_time / average_concurrency`
+    // And we just pick the maximum accumulated_network_time among all destination
+    int64_t _network_time();
 
     FragmentContext* _fragment_ctx;
     const MemTracker* _mem_tracker;
@@ -100,7 +127,7 @@ private:
     phmap::flat_hash_map<int64_t, std::queue<TransmitChunkInfo, std::list<TransmitChunkInfo>>> _buffers;
     phmap::flat_hash_map<int64_t, int32_t> _num_finished_rpcs;
     phmap::flat_hash_map<int64_t, int32_t> _num_in_flight_rpcs;
-    phmap::flat_hash_map<int64_t, int64_t> _network_time;
+    phmap::flat_hash_map<int64_t, TimeTrace> _network_times;
     phmap::flat_hash_map<int64_t, std::unique_ptr<std::mutex>> _mutexes;
 
     // True means that SinkBuffer needn't input chunk and send chunk anymore,
@@ -116,6 +143,16 @@ private:
     std::atomic<bool> _is_finishing = false;
     std::atomic<int32_t> _num_sending_rpc = 0;
 
+    // RuntimeProfile counters
+    std::atomic_bool _is_profile_updated = false;
+    std::atomic<int64_t> _bytes_enqueued = 0;
+    std::atomic<int64_t> _request_enqueued = 0;
+    std::atomic<int64_t> _bytes_sent = 0;
+    std::atomic<int64_t> _request_sent = 0;
+
+    int64_t _pending_timestamp = -1;
+    mutable int64_t _last_full_timestamp = -1;
+    mutable int64_t _full_time = 0;
 }; // namespace starrocks::pipeline
 
 } // namespace starrocks::pipeline

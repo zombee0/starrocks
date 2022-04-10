@@ -342,19 +342,11 @@ Status ExchangeSinkOperator::prepare(RuntimeState* state) {
     srand(reinterpret_cast<uint64_t>(this));
     std::shuffle(_channel_indices.begin(), _channel_indices.end(), std::mt19937(std::random_device()()));
 
-    _bytes_sent_counter = ADD_COUNTER(_unique_metrics, "BytesSent", TUnit::BYTES);
     _bytes_pass_through_counter = ADD_COUNTER(_unique_metrics, "BytesPassThrough", TUnit::BYTES);
     _uncompressed_bytes_counter = ADD_COUNTER(_unique_metrics, "UncompressedBytes", TUnit::BYTES);
-    _serialize_batch_timer = ADD_TIMER(_unique_metrics, "SerializeBatchTime");
+    _serialize_chunk_timer = ADD_TIMER(_unique_metrics, "SerializeChunkTime");
     _shuffle_hash_timer = ADD_TIMER(_unique_metrics, "ShuffleHashTime");
     _compress_timer = ADD_TIMER(_unique_metrics, "CompressTime");
-    _overall_throughput = _unique_metrics->add_derived_counter(
-            "OverallThroughput", TUnit::BYTES_PER_SECOND,
-            [capture0 = _bytes_sent_counter, capture1 = _total_timer] {
-                return RuntimeProfile::units_per_second(capture0, capture1);
-            },
-            "");
-    _network_timer = ADD_TIMER(_unique_metrics, "NetworkTime");
 
     for (auto& _channel : _channels) {
         RETURN_IF_ERROR(_channel->init(state));
@@ -472,7 +464,8 @@ Status ExchangeSinkOperator::push_chunk(RuntimeState* state, const vectorized::C
 
             for (size_t i = 0; i < num_rows; ++i) {
                 auto channel_id = _hash_values[i] % num_channels;
-                auto driver_sequence = _hash_values[i] % _num_shuffles;
+                // Note that xorshift32 rehash must be applied for both local shuffle and exchange sink here.
+                auto driver_sequence = HashUtil::xorshift32(_hash_values[i]) % _num_shuffles;
                 _channel_ids[i] = channel_id;
                 _driver_sequences[i] = driver_sequence;
                 _channel_row_idx_start_points[channel_id * _num_shuffles + driver_sequence]++;
@@ -529,11 +522,13 @@ Status ExchangeSinkOperator::set_finishing(RuntimeState* state) {
     for (auto& _channel : _channels) {
         _channel->close(state, _fragment_ctx);
     }
+
+    _buffer->set_finishing();
     return Status::OK();
 }
 
 void ExchangeSinkOperator::close(RuntimeState* state) {
-    COUNTER_SET(_network_timer, _buffer->network_time());
+    _buffer->update_profile(_unique_metrics.get());
     Operator::close(state);
 }
 
@@ -541,7 +536,7 @@ Status ExchangeSinkOperator::serialize_chunk(const vectorized::Chunk* src, Chunk
                                              int num_receivers) {
     VLOG_ROW << "[ExchangeSinkOperator] serializing " << src->num_rows() << " rows";
     {
-        SCOPED_TIMER(_serialize_batch_timer);
+        SCOPED_TIMER(_serialize_chunk_timer);
         // We only serialize chunk meta for first chunk
         if (*is_first_chunk) {
             StatusOr<ChunkPB> res = serde::ProtobufChunkSerde::serialize(*src);
@@ -588,7 +583,6 @@ Status ExchangeSinkOperator::serialize_chunk(const vectorized::Chunk* src, Chunk
     size_t chunk_size = dst->data().size();
     VLOG_ROW << "chunk data size " << chunk_size;
 
-    COUNTER_UPDATE(_bytes_sent_counter, chunk_size * num_receivers);
     COUNTER_UPDATE(_uncompressed_bytes_counter, uncompressed_size * num_receivers);
     return Status::OK();
 }

@@ -1,6 +1,6 @@
 // This file is licensed under the Elastic License 2.0. Copyright 2021-present, StarRocks Limited.
 
-#include "storage/rowset/vectorized/segment_iterator.h"
+#include "segment_iterator.h"
 
 #include <algorithm>
 #include <memory>
@@ -17,6 +17,7 @@
 #include "gutil/casts.h"
 #include "gutil/stl_util.h"
 #include "runtime/external_scan_context_mgr.h"
+#include "segment_options.h"
 #include "simd/simd.h"
 #include "storage/del_vector.h"
 #include "storage/fs/fs_util.h"
@@ -26,22 +27,20 @@
 #include "storage/rowset/common.h"
 #include "storage/rowset/default_value_column_iterator.h"
 #include "storage/rowset/dictcode_column_iterator.h"
-#include "storage/rowset/scalar_column_iterator.h"
+#include "storage/rowset/rowid_column_iterator.h"
 #include "storage/rowset/segment.h"
-#include "storage/rowset/vectorized/rowid_column_iterator.h"
-#include "storage/rowset/vectorized/segment_options.h"
 #include "storage/storage_engine.h"
 #include "storage/types.h"
 #include "storage/update_manager.h"
 #include "storage/vectorized/chunk_helper.h"
 #include "storage/vectorized/chunk_iterator.h"
+#include "storage/vectorized/column_expr_predicate.h"
 #include "storage/vectorized/column_or_predicate.h"
 #include "storage/vectorized/column_predicate.h"
 #include "storage/vectorized/column_predicate_rewriter.h"
 #include "storage/vectorized/projection_iterator.h"
 #include "storage/vectorized/range.h"
 #include "storage/vectorized/roaring2range.h"
-#include "util/slice.h"
 #include "util/starrocks_metrics.h"
 
 namespace starrocks::vectorized {
@@ -165,7 +164,7 @@ private:
         // the last item of |_read_schema| and |_dict_decode_schema| is a row id field.
         bool _late_materialize{false};
 
-        // not all dict encdoe
+        // not all dict encode
         bool _has_force_dict_encode{false};
     };
 
@@ -475,11 +474,14 @@ Status SegmentIterator::_get_row_ranges_by_zone_map() {
     for (const auto& pair : _opts.predicates) {
         columns.insert(pair.first);
     }
+    std::unordered_map<ColumnId, std::vector<const ColumnPredicate*>> predicates_for_zone_map;
+    RETURN_IF_ERROR(
+            ZonemapPredicatesRewriter::rewrite_predicate_map(&_obj_pool, _opts.predicates, &predicates_for_zone_map));
 
     std::vector<const ColumnPredicate*> query_preds;
     for (ColumnId cid : columns) {
-        auto iter1 = _opts.predicates.find(cid);
-        if (iter1 != _opts.predicates.end()) {
+        auto iter1 = predicates_for_zone_map.find(cid);
+        if (iter1 != predicates_for_zone_map.end()) {
             query_preds = iter1->second;
         } else {
             query_preds.clear();
@@ -827,7 +829,7 @@ uint16_t SegmentIterator::_filter(Chunk* chunk, vector<rowid_t>* rowid, uint16_t
 
     // evaluate brachless
     if (!_branchless_preds.empty()) {
-        SCOPED_RAW_TIMER(&_opts.stats->vec_cond_evaluate_ns);
+        SCOPED_RAW_TIMER(&_opts.stats->branchless_cond_evaluate_ns);
 
         uint16_t selected_size = 0;
         if (!_vectorized_preds.empty()) {
@@ -879,6 +881,7 @@ uint16_t SegmentIterator::_filter(Chunk* chunk, vector<rowid_t>* rowid, uint16_t
 uint16_t SegmentIterator::_filter_by_expr_predicates(Chunk* chunk, vector<rowid_t>* rowid) {
     size_t chunk_size = chunk->num_rows();
     if (_expr_ctx_preds.size() != 0 && chunk_size > 0) {
+        SCOPED_RAW_TIMER(&_opts.stats->expr_cond_evaluate_ns);
         const auto* pred = _expr_ctx_preds[0];
         Column* c = chunk->get_column_by_id(pred->column_id()).get();
         pred->evaluate(c, _selection.data(), 0, chunk_size);
@@ -1377,7 +1380,7 @@ void SegmentIterator::close() {
     }
 }
 
-// put the field that has predicate on it ahead of those without one, for handle late
+// put the field that has predicated on it ahead of those without one, for handle late
 // materialization easier.
 inline Schema reorder_schema(const Schema& input, const std::unordered_map<ColumnId, PredicateList>& predicates) {
     const std::vector<FieldPtr>& fields = input.fields();

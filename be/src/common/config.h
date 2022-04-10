@@ -298,7 +298,7 @@ CONF_mInt32(update_compaction_trace_threshold, "20");
 CONF_Int64(vertical_compaction_max_columns_per_group, "5");
 
 CONF_mBool(enable_compaction, "true");
-CONF_Bool(enable_new_compaction_framework, "false");
+CONF_Bool(enable_event_based_compaction_framework, "false");
 CONF_mInt32(max_compaction_task_num, "4");
 // < 0 means no limit
 CONF_mInt32(max_cumulative_compaction_task, "-1");
@@ -688,6 +688,8 @@ CONF_mInt64(experimental_s3_max_single_part_size, "16777216");
 CONF_mInt64(experimental_s3_min_upload_part_size, "16777216");
 
 CONF_Int64(max_load_dop, "16");
+
+CONF_Int64(meta_threshold_to_manual_compact, "10737418240"); // 10G
 
 } // namespace config
 

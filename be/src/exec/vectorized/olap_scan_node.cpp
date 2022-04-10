@@ -77,7 +77,7 @@ Status OlapScanNode::open(RuntimeState* state) {
     OlapScanConjunctsManager::eval_const_conjuncts(_conjunct_ctxs, &status);
     _update_status(status);
 
-    _dict_optimize_parser.set_mutable_dict_maps(state->mutable_query_global_dict_map());
+    _dict_optimize_parser.set_mutable_dict_maps(state, state->mutable_query_global_dict_map());
     DictOptimizeParser::rewrite_descriptor(state, _conjunct_ctxs, _olap_scan_node.dict_string_id_to_int_ids,
                                            &(_tuple_desc->decoded_slots()));
 
@@ -304,13 +304,9 @@ void OlapScanNode::_scanner_thread(TabletScanner* scanner) {
             _close_pending_scanners();
         }
     } else {
-        if (scanner != nullptr) {
-            scanner->close(_runtime_state);
-            _closed_scanners.fetch_add(1, std::memory_order_release);
-            _close_pending_scanners();
-        } else {
-            _close_pending_scanners();
-        }
+        scanner->close(_runtime_state);
+        _closed_scanners.fetch_add(1, std::memory_order_release);
+        _close_pending_scanners();
     }
 
     if (_closed_scanners.load(std::memory_order_acquire) == _num_scanners) {

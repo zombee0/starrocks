@@ -53,8 +53,8 @@ public:
     RuntimeState* runtime_state() const { return _runtime_state.get(); }
     std::shared_ptr<RuntimeState> runtime_state_ptr() { return _runtime_state; }
     void set_runtime_state(std::shared_ptr<RuntimeState>&& runtime_state) { _runtime_state = std::move(runtime_state); }
-    ExecNode* plan() const { return _plan; }
-    void set_plan(ExecNode* plan) { _plan = plan; }
+    ExecNode*& plan() { return _plan; }
+
     Pipelines& pipelines() { return _pipelines; }
     void set_pipelines(Pipelines&& pipelines) { _pipelines = std::move(pipelines); }
     Drivers& drivers() { return _drivers; }
@@ -65,10 +65,6 @@ public:
     }
 
     bool count_down_drivers() { return _num_drivers.fetch_sub(1) == 1; }
-
-    void set_num_root_drivers(size_t num_root_drivers) { _num_root_drivers.store(num_root_drivers); }
-
-    bool count_down_root_drivers() { return _num_root_drivers.fetch_sub(1) == 1; }
 
     void set_final_status(const Status& status) {
         if (_final_status.load() != nullptr) {
@@ -151,10 +147,6 @@ private:
     // MorselQueue that is shared among drivers created from the same pipeline,
     // drivers contend for Morsels from MorselQueue.
     MorselQueueMap _morsel_queues;
-    // when _num_root_drivers counts down to zero, means that all the root drivers are finished,
-    // the fragment instance produces the entire result required, all the outstanding drivers
-    // should finish computation.
-    std::atomic<size_t> _num_root_drivers;
     // when _num_drivers counts down to zero, means all drivers has finished, then BE
     // can notify FE via reportExecStatus that fragment instance is done after which
     // FragmentContext can be unregistered safely.

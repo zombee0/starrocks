@@ -550,7 +550,8 @@ public class Coordinator {
                         if (needCheckBackendState) {
                             needCheckBackendExecStates.add(execState);
                             if (LOG.isDebugEnabled()) {
-                                LOG.debug("add need check backend {} for fragment, {} job: {}", execState.backend.getId(),
+                                LOG.debug("add need check backend {} for fragment, {} job: {}",
+                                        execState.backend.getId(),
                                         fragment.getFragmentId().asInt(), jobId);
                             }
                         }
@@ -1669,7 +1670,7 @@ public class Coordinator {
             List<RuntimeProfile> instanceProfiles = fragmentProfile.getChildList().stream()
                     .map(pair -> pair.first)
                     .collect(Collectors.toList());
-            Counter counter = fragmentProfile.addCounter("InstanceNum", TUnit.UNIT, "");
+            Counter counter = fragmentProfile.addCounter("InstanceNum", TUnit.UNIT);
             counter.setValue(instanceProfiles.size());
 
             // After merge, all merged metrics will gather into the first profile
@@ -1685,6 +1686,43 @@ public class Coordinator {
                 RuntimeProfile pipelineProfile = pair.first;
                 fragmentProfile.addChild(pipelineProfile);
             });
+        }
+
+        // Set backend number
+        for (int i = 0; i < fragments.size(); i++) {
+            PlanFragment fragment = fragments.get(i);
+            RuntimeProfile profile = fragmentProfiles.get(i);
+
+            Set<TNetworkAddress> networkAddresses =
+                    fragmentExecParamsMap.get(fragment.getFragmentId()).instanceExecParams.stream()
+                            .map(param -> param.host)
+                            .collect(Collectors.toSet());
+
+            Counter backendNum = profile.addCounter("BackendNum", TUnit.UNIT);
+            backendNum.setValue(networkAddresses.size());
+        }
+
+        // Calculate Fe time and Be time
+        boolean found = false;
+        for (int i = 0; !found && i < fragments.size(); i++) {
+            PlanFragment fragment = fragments.get(i);
+            DataSink sink = fragment.getSink();
+            if (!(sink instanceof ResultSink)) {
+                continue;
+            }
+            RuntimeProfile profile = fragmentProfiles.get(i);
+
+            for (int j = 0; !found && j < profile.getChildList().size(); j++) {
+                RuntimeProfile pipelineProfile = profile.getChildList().get(j).first;
+                RuntimeProfile operatorProfile = pipelineProfile.getChildList().get(0).first;
+                if (operatorProfile.getName().contains("RESULT_SINK")) {
+                    long beTotalTime = pipelineProfile.getCounter("DriverTotalTime").getValue();
+                    Counter executionTotalTime = queryProfile.addCounter("ExecutionTotalTime", TUnit.TIME_NS);
+                    queryProfile.getCounterTotalTime().setValue(0);
+                    executionTotalTime.setValue(beTotalTime);
+                    found = true;
+                }
+            }
         }
     }
 
@@ -1813,7 +1851,8 @@ public class Coordinator {
             this.address = host;
             this.backend = idToBackend.get(addressToBackendID.get(address));
 
-            String name = "Instance " + DebugUtil.printId(rpcParams.params.fragment_instance_id) + " (host=" + address + ")";
+            String name =
+                    "Instance " + DebugUtil.printId(rpcParams.params.fragment_instance_id) + " (host=" + address + ")";
             this.profile = new RuntimeProfile(name);
             this.hasCanceled = false;
             this.lastMissingHeartbeatTime = backend.getLastMissingHeartbeatTime();
@@ -1985,12 +2024,8 @@ public class Coordinator {
 
             WorkGroup workgroup = null;
             if (ConnectContext.get() != null) {
-                String user = ConnectContext.get().getCurrentUserIdentity().getQualifiedUser();
-                String roleName = Catalog.getCurrentCatalog().getAuth()
-                        .getRoleName(ConnectContext.get().getCurrentUserIdentity());
-                String remoteIp = ConnectContext.get().getRemoteIP();
                 workgroup = Catalog.getCurrentCatalog().getWorkGroupMgr().chooseWorkGroup(
-                        user, roleName, WorkGroupClassifier.QueryType.SELECT, remoteIp);
+                        ConnectContext.get(), WorkGroupClassifier.QueryType.SELECT);
             }
 
             List<TExecPlanFragmentParams> paramsList = Lists.newArrayList();

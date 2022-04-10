@@ -259,8 +259,10 @@ vectorized_functions = [
      'StringFunctions::parse_url_prepare', 'StringFunctions::parse_url_close'],
 
     # 50xxx: timestamp functions
+    [50008, 'year', 'SMALLINT', ['DATE'], 'TimeFunctions::yearV3'],
     [50009, 'year', 'SMALLINT', ['DATETIME'], 'TimeFunctions::yearV2'],
     [50010, 'year', 'INT', ['DATETIME'], 'TimeFunctions::year'],
+    [50018, 'month', 'TINYINT', ['DATE'], 'TimeFunctions::monthV3'],
     [50019, 'month', 'TINYINT', ['DATETIME'], 'TimeFunctions::monthV2'],
     [50020, 'month', 'INT', ['DATETIME'], 'TimeFunctions::month'],
     [50030, 'quarter', 'INT', ['DATETIME'], 'TimeFunctions::quarter'],
@@ -268,6 +270,7 @@ vectorized_functions = [
     [50050, 'to_date', 'DATE', ['DATETIME'], 'TimeFunctions::to_date'],
     [50051, 'date', 'DATE', ['DATETIME'], 'TimeFunctions::to_date'],
 
+    [50057, 'day', 'TINYINT', ['DATE'], 'TimeFunctions::dayV3'],
     [50058, 'day', 'TINYINT', ['DATETIME'], 'TimeFunctions::dayV2'],
     [50059, 'dayofmonth', 'TINYINT', ['DATETIME'], 'TimeFunctions::dayV2'],
     [50060, 'dayofmonth', 'INT', ['DATETIME'], 'TimeFunctions::day'],
@@ -478,6 +481,7 @@ vectorized_functions = [
     [100013, 'current_version', 'VARCHAR', [], "UtilityFunctions::current_version"],
     [100014, 'last_query_id', 'VARCHAR', [], "UtilityFunctions::last_query_id"],
     [100015, 'uuid', 'VARCHAR', [], "UtilityFunctions::uuid"],
+    [100016, 'uuid_numeric', 'LARGEINT', [], "UtilityFunctions::uuid_numeric"],
 
     # json string function
     [110000, "get_json_int", "INT", ["VARCHAR", "VARCHAR"], "JsonFunctions::get_json_int",
@@ -670,7 +674,7 @@ vectorized_functions = [
     [150180, 'array_slice', 'ARRAY_DECIMALV2', ['ARRAY_DECIMALV2', 'BIGINT', 'BIGINT'], 'ArrayFunctions::array_slice_decimalv2'],
     [150181, 'array_slice', 'ARRAY_VARCHAR',   ['ARRAY_VARCHAR', 'BIGINT', 'BIGINT'],   'ArrayFunctions::array_slice_varchar'],
 
-    [150190, 'array_concat', 'ARRAY_DATE',      ['ARRAY_DATE', "..."],      'ArrayFunctions::array_concat_date'],
+    [150190, 'array_concat', 'ARRAY_DATE', ['ARRAY_DATE', "..."], 'ArrayFunctions::array_concat_date'],
     [150191, 'array_concat', 'ARRAY_DATETIME',  ['ARRAY_DATETIME', "..."],  'ArrayFunctions::array_concat_datetime'],
     [150192, 'array_concat', 'ARRAY_BOOLEAN',   ['ARRAY_BOOLEAN', "..."],   'ArrayFunctions::array_concat_boolean'],
     [150193, 'array_concat', 'ARRAY_TINYINT',   ['ARRAY_TINYINT', "..."],   'ArrayFunctions::array_concat_tinyint'],
@@ -708,4 +712,17 @@ vectorized_functions = [
     [150239, 'array_intersect', 'ARRAY_DOUBLE',    ['ARRAY_DOUBLE', "..."],      'ArrayFunctions::array_intersect_double'],
     [150240, 'array_intersect', 'ARRAY_DECIMALV2', ['ARRAY_DECIMALV2', "..."],   'ArrayFunctions::array_intersect_decimalv2'],
     [150241, 'array_intersect', 'ARRAY_VARCHAR',   ['ARRAY_VARCHAR', "..."],     'ArrayFunctions::array_intersect_varchar'],
+
+    [150250, 'array_slice', 'ARRAY_DATE',      ['ARRAY_DATE', 'BIGINT'],      'ArrayFunctions::array_slice_date'],
+    [150251, 'array_slice', 'ARRAY_DATETIME',  ['ARRAY_DATETIME', 'BIGINT'],  'ArrayFunctions::array_slice_datetime'],
+    [150252, 'array_slice', 'ARRAY_BOOLEAN',   ['ARRAY_BOOLEAN', 'BIGINT'],   'ArrayFunctions::array_slice_boolean'],
+    [150253, 'array_slice', 'ARRAY_TINYINT',   ['ARRAY_TINYINT', 'BIGINT'],   'ArrayFunctions::array_slice_tinyint'],
+    [150254, 'array_slice', 'ARRAY_SMALLINT',  ['ARRAY_SMALLINT', 'BIGINT'],  'ArrayFunctions::array_slice_smallint'],
+    [150255, 'array_slice', 'ARRAY_INT',       ['ARRAY_INT', 'BIGINT'],       'ArrayFunctions::array_slice_int'],
+    [150256, 'array_slice', 'ARRAY_BIGINT',    ['ARRAY_BIGINT', 'BIGINT'],    'ArrayFunctions::array_slice_bigint'],
+    [150257, 'array_slice', 'ARRAY_LARGEINT',  ['ARRAY_LARGEINT', 'BIGINT'],  'ArrayFunctions::array_slice_largeint'],
+    [150258, 'array_slice', 'ARRAY_FLOAT',     ['ARRAY_FLOAT', 'BIGINT'],     'ArrayFunctions::array_slice_float'],
+    [150259, 'array_slice', 'ARRAY_DOUBLE',    ['ARRAY_DOUBLE', 'BIGINT'],    'ArrayFunctions::array_slice_double'],
+    [150260, 'array_slice', 'ARRAY_DECIMALV2', ['ARRAY_DECIMALV2', 'BIGINT'], 'ArrayFunctions::array_slice_decimalv2'],
+    [150261, 'array_slice', 'ARRAY_VARCHAR',   ['ARRAY_VARCHAR', 'BIGINT'],   'ArrayFunctions::array_slice_varchar'],
 ]

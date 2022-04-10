@@ -577,7 +577,9 @@ Status HdfsScanNode::close(RuntimeState* state) {
 
 Status HdfsScanNode::set_scan_ranges(const std::vector<TScanRangeParams>& scan_ranges) {
     for (const auto& scan_range : scan_ranges) {
-        _scan_ranges.emplace_back(scan_range.scan_range.hdfs_scan_range);
+        auto& range = scan_range.scan_range.hdfs_scan_range;
+        if (range.file_length == 0) continue;
+        _scan_ranges.emplace_back(range);
         COUNTER_UPDATE(_profile.scan_ranges_counter, 1);
     }
 
@@ -709,8 +711,8 @@ void HdfsScanNode::_init_counter() {
     _profile.open_file_timer = ADD_TIMER(_runtime_profile, "OpenFile");
     _profile.expr_filter_timer = ADD_TIMER(_runtime_profile, "ExprFilterTime");
 
-    _profile.io_timer = ADD_TIMER(_runtime_profile, "IoTime");
-    _profile.io_counter = ADD_COUNTER(_runtime_profile, "IoCounter", TUnit::UNIT);
+    _profile.io_timer = ADD_TIMER(_runtime_profile, "IOTime");
+    _profile.io_counter = ADD_COUNTER(_runtime_profile, "IOCounter", TUnit::UNIT);
     _profile.column_read_timer = ADD_TIMER(_runtime_profile, "ColumnReadTime");
     _profile.column_convert_timer = ADD_TIMER(_runtime_profile, "ColumnConvertTime");
 }

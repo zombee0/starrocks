@@ -147,9 +147,9 @@ public class SystemInfoService {
         idToBackendRef = ImmutableMap.copyOf(copiedBackends);
 
         // set new backend's report version as 0L
-        Map<Long, AtomicLong> copiedReportVerions = Maps.newHashMap(idToReportVersionRef);
-        copiedReportVerions.put(newBackend.getId(), new AtomicLong(0L));
-        idToReportVersionRef = ImmutableMap.copyOf(copiedReportVerions);
+        Map<Long, AtomicLong> copiedReportVersions = Maps.newHashMap(idToReportVersionRef);
+        copiedReportVersions.put(newBackend.getId(), new AtomicLong(0L));
+        idToReportVersionRef = ImmutableMap.copyOf(copiedReportVersions);
 
         if (!Strings.isNullOrEmpty(destCluster)) {
             // add backend to destCluster
@@ -442,7 +442,7 @@ public class SystemInfoService {
         return seqChooseBackendIds(backendNum, needAlive, isCreate, clusterName, backends);
     }
 
-    // choose backends by round robin
+    // choose backends by round-robin
     // return null if not enough backend
     // use synchronized to run serially
     public synchronized List<Long> seqChooseBackendIds(int backendNum, boolean needAlive, boolean isCreate,

@@ -22,13 +22,13 @@
 namespace starrocks::pipeline {
 using namespace vectorized;
 
-OlapChunkSource::OlapChunkSource(MorselPtr&& morsel, ScanOperator* op, vectorized::OlapScanNode* scan_node)
-        : ChunkSource(std::move(morsel)),
+OlapChunkSource::OlapChunkSource(RuntimeProfile* runtime_profile, MorselPtr&& morsel, ScanOperator* op,
+                                 vectorized::OlapScanNode* scan_node)
+        : ChunkSource(runtime_profile, std::move(morsel)),
           _scan_node(scan_node),
           _limit(scan_node->limit()),
           _runtime_in_filters(op->runtime_in_filters()),
-          _runtime_bloom_filters(op->runtime_bloom_filters()),
-          _runtime_profile(op->unique_metrics()) {
+          _runtime_bloom_filters(op->runtime_bloom_filters()) {
     _conjunct_ctxs = scan_node->conjunct_ctxs();
     _conjunct_ctxs.insert(_conjunct_ctxs.end(), _runtime_in_filters.begin(), _runtime_in_filters.end());
     ScanMorsel* scan_morsel = (ScanMorsel*)_morsel.get();
@@ -42,10 +42,16 @@ Status OlapChunkSource::prepare(RuntimeState* state) {
     _slots = &tuple_desc->slots();
 
     _runtime_profile->add_info_string("Table", tuple_desc->table_desc()->name());
+    if (thrift_olap_scan_node.__isset.rollup_name) {
+        _runtime_profile->add_info_string("Rollup", thrift_olap_scan_node.rollup_name);
+    }
+    if (thrift_olap_scan_node.__isset.sql_predicates) {
+        _runtime_profile->add_info_string("Predicates", thrift_olap_scan_node.sql_predicates);
+    }
 
     _init_counter(state);
 
-    _dict_optimize_parser.set_mutable_dict_maps(state->mutable_query_global_dict_map());
+    _dict_optimize_parser.set_mutable_dict_maps(state, state->mutable_query_global_dict_map());
 
     OlapScanConjunctsManager::eval_const_conjuncts(_conjunct_ctxs, &_status);
     OlapScanConjunctsManager& cm = _conjuncts_manager;
@@ -93,6 +99,8 @@ void OlapChunkSource::_init_counter(RuntimeState* state) {
     _bi_filter_timer = ADD_CHILD_TIMER(_runtime_profile, "BitmapIndexFilter", "SegmentInit");
     _bi_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "BitmapIndexFilterRows", TUnit::UNIT, "SegmentInit");
     _bf_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "BloomFilterFilterRows", TUnit::UNIT, "SegmentInit");
+    _seg_zm_filtered_counter =
+            ADD_CHILD_COUNTER(_runtime_profile, "SegmentZoneMapFilterRows", TUnit::UNIT, "SegmentInit");
     _zm_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "ZoneMapIndexFilterRows", TUnit::UNIT, "SegmentInit");
     _sk_filtered_counter = ADD_CHILD_COUNTER(_runtime_profile, "ShortKeyFilterRows", TUnit::UNIT, "SegmentInit");
 
@@ -263,7 +271,6 @@ Status OlapChunkSource::_init_unused_output_columns(const std::vector<std::strin
 
 Status OlapChunkSource::_init_olap_reader(RuntimeState* runtime_state) {
     const TOlapScanNode& thrift_olap_scan_node = _scan_node->thrift_olap_scan_node();
-
     // output columns of `this` OlapScanner, i.e, the final output columns of `get_chunk`.
     std::vector<uint32_t> scanner_columns;
     // columns fetched from |_reader|.
@@ -327,7 +334,7 @@ Status OlapChunkSource::buffer_next_batch_chunks_blocking(size_t batch_size, boo
 
     for (size_t i = 0; i < batch_size && !can_finish; ++i) {
         ChunkUniquePtr chunk(
-                ChunkHelper::new_chunk_pooled(_prj_iter->encoded_schema(), _runtime_state->chunk_size(), true));
+                ChunkHelper::new_chunk_pooled(_prj_iter->output_schema(), _runtime_state->chunk_size(), true));
         _status = _read_chunk_from_storage(_runtime_state, chunk.get());
         if (!_status.ok()) {
             // end of file is normal case, need process chunk
@@ -355,7 +362,7 @@ Status OlapChunkSource::buffer_next_batch_chunks_blocking_for_workgroup(size_t b
             SCOPED_RAW_TIMER(&time_spent);
 
             ChunkUniquePtr chunk(
-                    ChunkHelper::new_chunk_pooled(_prj_iter->encoded_schema(), _runtime_state->chunk_size(), true));
+                    ChunkHelper::new_chunk_pooled(_prj_iter->output_schema(), _runtime_state->chunk_size(), true));
             _status = _read_chunk_from_storage(_runtime_state, chunk.get());
             if (!_status.ok()) {
                 // end of file is normal case, need process chunk
@@ -496,10 +503,17 @@ void OlapChunkSource::_update_counter() {
 
     COUNTER_UPDATE(_seg_init_timer, _reader->stats().segment_init_ns);
 
-    COUNTER_UPDATE(_pred_filter_timer, _reader->stats().vec_cond_evaluate_ns);
+    int64_t cond_evaluate_ns = 0;
+    cond_evaluate_ns += _reader->stats().vec_cond_evaluate_ns;
+    cond_evaluate_ns += _reader->stats().branchless_cond_evaluate_ns;
+    cond_evaluate_ns += _reader->stats().expr_cond_evaluate_ns;
+    // In order to avoid exposing too detailed metrics, we still record these infos on `_pred_filter_timer`
+    // When we support metric classification, we can disassemble it again.
+    COUNTER_UPDATE(_pred_filter_timer, cond_evaluate_ns);
     COUNTER_UPDATE(_pred_filter_counter, _reader->stats().rows_vec_cond_filtered);
     COUNTER_UPDATE(_del_vec_filter_counter, _reader->stats().rows_del_vec_filtered);
 
+    COUNTER_UPDATE(_seg_zm_filtered_counter, _reader->stats().segment_stats_filtered);
     COUNTER_UPDATE(_zm_filtered_counter, _reader->stats().rows_stats_filtered);
     COUNTER_UPDATE(_bf_filtered_counter, _reader->stats().rows_bf_filtered);
     COUNTER_UPDATE(_sk_filtered_counter, _reader->stats().rows_key_range_filtered);

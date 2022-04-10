@@ -26,19 +26,14 @@ import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import com.starrocks.analysis.AddSqlBlackListStmt;
-import com.starrocks.analysis.AlterViewStmt;
-import com.starrocks.analysis.AlterWorkGroupStmt;
 import com.starrocks.analysis.AnalyzeStmt;
 import com.starrocks.analysis.Analyzer;
 import com.starrocks.analysis.CreateAnalyzeJobStmt;
 import com.starrocks.analysis.CreateTableAsSelectStmt;
-import com.starrocks.analysis.CreateViewStmt;
-import com.starrocks.analysis.CreateWorkGroupStmt;
 import com.starrocks.analysis.DdlStmt;
 import com.starrocks.analysis.DelSqlBlackListStmt;
 import com.starrocks.analysis.DeleteStmt;
 import com.starrocks.analysis.DmlStmt;
-import com.starrocks.analysis.DropWorkGroupStmt;
 import com.starrocks.analysis.EnterStmt;
 import com.starrocks.analysis.ExportStmt;
 import com.starrocks.analysis.Expr;
@@ -49,13 +44,7 @@ import com.starrocks.analysis.RedirectStatus;
 import com.starrocks.analysis.SelectStmt;
 import com.starrocks.analysis.SetStmt;
 import com.starrocks.analysis.SetVar;
-import com.starrocks.analysis.ShowColumnStmt;
-import com.starrocks.analysis.ShowDbStmt;
 import com.starrocks.analysis.ShowStmt;
-import com.starrocks.analysis.ShowTableStatusStmt;
-import com.starrocks.analysis.ShowTableStmt;
-import com.starrocks.analysis.ShowVariablesStmt;
-import com.starrocks.analysis.ShowWorkGroupStmt;
 import com.starrocks.analysis.SqlParser;
 import com.starrocks.analysis.SqlScanner;
 import com.starrocks.analysis.StatementBase;
@@ -99,13 +88,13 @@ import com.starrocks.mysql.privilege.PrivPredicate;
 import com.starrocks.persist.gson.GsonUtils;
 import com.starrocks.planner.OlapTableSink;
 import com.starrocks.planner.PlanFragment;
-import com.starrocks.planner.Planner;
 import com.starrocks.planner.ScanNode;
 import com.starrocks.proto.PQueryStatistics;
 import com.starrocks.proto.QueryStatisticsItemPB;
 import com.starrocks.qe.QueryState.MysqlStateType;
 import com.starrocks.rpc.RpcException;
 import com.starrocks.service.FrontendOptions;
+import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.StatementPlanner;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.QueryStatement;
@@ -155,12 +144,10 @@ public class StmtExecutor {
     private final MysqlSerializer serializer;
     private final OriginStatement originStmt;
     private StatementBase parsedStmt;
-    private Analyzer analyzer;
     private RuntimeProfile profile;
-    private volatile Coordinator coord = null;
+    private Coordinator coord = null;
     private MasterOpExecutor masterOpExecutor = null;
     private RedirectStatus redirectStatus = null;
-    private Planner planner;
     private final boolean isProxy;
     private ShowResultSet proxyResultSet = null;
     private PQueryStatistics statisticsForAuditLog;
@@ -206,6 +193,11 @@ public class StmtExecutor {
         summaryProfile.addInfoString(ProfileManager.DEFAULT_DB, context.getDatabase());
         summaryProfile.addInfoString(ProfileManager.SQL_STATEMENT, originStmt.originStmt);
         profile.addChild(summaryProfile);
+
+        RuntimeProfile plannerProfile = new RuntimeProfile("Planner");
+        profile.addChild(plannerProfile);
+        context.getPlannerProfile().build(plannerProfile);
+
         if (coord != null) {
             coord.getQueryProfile().getCounterTotalTime().setValue(TimeUtils.getEstimatedTime(beginTimeInNanoSecond));
             coord.endProfile();
@@ -213,10 +205,6 @@ public class StmtExecutor {
             profile.addChild(coord.getQueryProfile());
             coord = null;
         }
-    }
-
-    public Planner planner() {
-        return planner;
     }
 
     public boolean isForwardToMaster() {
@@ -309,8 +297,8 @@ public class StmtExecutor {
             boolean execPlanBuildByNewPlanner = false;
 
             // Entrance to the new planner
-            if (isStatisticsOrAnalyzer(parsedStmt, context) || supportedByNewPlanner(parsedStmt, context)) {
-                try {
+            if (isStatisticsOrAnalyzer(parsedStmt, context) || StatementPlanner.supportedByNewAnalyzer(parsedStmt)) {
+                try (PlannerProfile.ScopedTimer _ = PlannerProfile.getScopedTimer("Total")) {
                     redirectStatus = parsedStmt.getRedirectStatus();
                     if (!isForwardToMaster()) {
                         context.getDumpInfo().reset();
@@ -430,19 +418,12 @@ public class StmtExecutor {
                 }
             } else if (parsedStmt instanceof DmlStmt) {
                 try {
-                    if (parsedStmt instanceof InsertStmt) {
-                        handleInsertStmtWithNewPlanner(execPlan, (InsertStmt) parsedStmt);
-                    } else if (parsedStmt instanceof UpdateStmt) {
-                        handleUpdateStmtWithNewPlanner(execPlan, (UpdateStmt) parsedStmt);
-                    } else {
-                        throw unsupportedException(
-                                "Unsupported dml statement " + parsedStmt.getClass().getSimpleName());
-                    }
+                    handleDMLStmt(execPlan, (DmlStmt) parsedStmt);
                     if (context.getSessionVariable().isReportSucc()) {
                         writeProfile(beginTimeInNanoSecond);
                     }
                 } catch (Throwable t) {
-                    LOG.warn("handle dml stmt fail", t);
+                    LOG.warn("DML statement(" + originStmt.originStmt + ") process failed.", t);
                     throw t;
                 } finally {
                     QeProcessorImpl.INSTANCE.unregisterQuery(context.getExecutionId());
@@ -523,7 +504,7 @@ public class StmtExecutor {
         try {
             InsertStmt insertStmt = createTableAsSelectStmt.getInsertStmt();
             ExecPlan execPlan = new StatementPlanner().plan(insertStmt, context);
-            handleInsertStmtWithNewPlanner(execPlan, ((CreateTableAsSelectStmt) parsedStmt).getInsertStmt());
+            handleDMLStmt(execPlan, ((CreateTableAsSelectStmt) parsedStmt).getInsertStmt());
             if (context.getSessionVariable().isReportSucc()) {
                 writeProfile(beginTimeInNanoSecond);
             }
@@ -609,7 +590,6 @@ public class StmtExecutor {
             return;
         }
 
-        analyzer = new Analyzer(context.getCatalog(), context);
         // Convert show statement to select statement here
         if (parsedStmt instanceof ShowStmt) {
             QueryStatement selectStmt = ((ShowStmt) parsedStmt).toSelectStmt();
@@ -620,12 +600,12 @@ public class StmtExecutor {
 
         if (parsedStmt instanceof QueryStmt
                 || parsedStmt instanceof QueryStatement
-                || parsedStmt instanceof InsertStmt
+                || parsedStmt instanceof DmlStmt
                 || parsedStmt instanceof CreateTableAsSelectStmt) {
             Preconditions.checkState(false, "Shouldn't reach here");
         } else {
             try {
-                parsedStmt.analyze(analyzer);
+                parsedStmt.analyze(new Analyzer(context.getCatalog(), context));
             } catch (AnalysisException e) {
                 throw e;
             } catch (Exception e) {
@@ -637,7 +617,7 @@ public class StmtExecutor {
 
     // Because this is called by other thread
     public void cancel() {
-        if (parsedStmt instanceof DeleteStmt) {
+        if (parsedStmt instanceof DeleteStmt && !((DeleteStmt) parsedStmt).supportNewPlanner()) {
             DeleteStmt deleteStmt = (DeleteStmt) parsedStmt;
             long jobId = deleteStmt.getJobId();
             if (jobId != -1) {
@@ -1031,25 +1011,7 @@ public class StmtExecutor {
                 || statement instanceof CreateAnalyzeJobStmt;
     }
 
-    private boolean supportedByNewPlanner(StatementBase statement, ConnectContext context) {
-        return statement instanceof AlterViewStmt
-                || statement instanceof AlterWorkGroupStmt
-                || statement instanceof CreateTableAsSelectStmt
-                || statement instanceof CreateViewStmt
-                || statement instanceof CreateWorkGroupStmt
-                || statement instanceof DropWorkGroupStmt
-                || statement instanceof InsertStmt
-                || statement instanceof QueryStatement
-                || statement instanceof ShowColumnStmt
-                || statement instanceof ShowDbStmt
-                || statement instanceof ShowTableStmt
-                || statement instanceof ShowTableStatusStmt
-                || statement instanceof ShowVariablesStmt
-                || statement instanceof ShowWorkGroupStmt
-                || statement instanceof UpdateStmt;
-    }
-
-    public void handleUpdateStmtWithNewPlanner(ExecPlan execPlan, UpdateStmt stmt) throws Exception {
+    public void handleDMLStmt(ExecPlan execPlan, DmlStmt stmt) throws Exception {
         if (stmt.isExplain()) {
             handleExplainStmt(execPlan.getExplainString(stmt.getExplainLevel()));
             return;
@@ -1058,34 +1020,37 @@ public class StmtExecutor {
             context.getQueryDetail().setExplain(execPlan.getExplainString(TExplainLevel.NORMAL));
         }
 
-        MetaUtils.normalizationTableName(context, stmt.getTableName());
-        Database database = MetaUtils.getStarRocks(context, stmt.getTableName());
-        Table targetTable = MetaUtils.getStarRocksTable(context, stmt.getTableName());
-
-        String label = "update_" + DebugUtil.printId(context.getExecutionId());
-        handleDMLStmtWithNewPlanner(execPlan, database, targetTable, label);
-    }
-
-    public void handleInsertStmtWithNewPlanner(ExecPlan execPlan, InsertStmt stmt) throws Exception {
-        if (stmt.getQueryStatement().isExplain()) {
-            handleExplainStmt(execPlan.getExplainString(stmt.getQueryStatement().getExplainLevel()));
+        // special handling for delete of non-primary key table, using old handler
+        if (stmt instanceof DeleteStmt && !((DeleteStmt) stmt).supportNewPlanner()) {
+            try {
+                context.getCatalog().getDeleteHandler().process((DeleteStmt) stmt);
+                context.getState().setOk();
+            } catch (QueryStateException e) {
+                if (e.getQueryState().getStateType() != MysqlStateType.OK) {
+                    LOG.warn("DDL statement(" + originStmt.originStmt + ") process failed.", e);
+                }
+                context.setState(e.getQueryState());
+            }
             return;
         }
-        if (context.getQueryDetail() != null) {
-            context.getQueryDetail().setExplain(execPlan.getExplainString(TExplainLevel.NORMAL));
-        }
 
         MetaUtils.normalizationTableName(context, stmt.getTableName());
         Database database = MetaUtils.getStarRocks(context, stmt.getTableName());
         Table targetTable = MetaUtils.getStarRocksTable(context, stmt.getTableName());
 
-        String label = Strings.isNullOrEmpty(stmt.getLabel()) ?
-                "insert_" + DebugUtil.printId(context.getExecutionId()) : stmt.getLabel();
-        handleDMLStmtWithNewPlanner(execPlan, database, targetTable, label);
-    }
+        String label = DebugUtil.printId(context.getExecutionId());
+        if (stmt instanceof InsertStmt) {
+            String stmtLabel = ((InsertStmt) stmt).getLabel();
+            label = Strings.isNullOrEmpty(stmtLabel) ? "insert_" + label : stmtLabel;
+        } else if (stmt instanceof UpdateStmt) {
+            label = "update_" + label;
+        } else if (stmt instanceof DeleteStmt) {
+            label = "delete_" + label;
+        } else {
+            throw unsupportedException(
+                    "Unsupported dml statement " + parsedStmt.getClass().getSimpleName());
+        }
 
-    public void handleDMLStmtWithNewPlanner(ExecPlan execPlan, Database database, Table targetTable,
-                                            String label) throws Exception {
         TransactionState.LoadJobSourceType sourceType = TransactionState.LoadJobSourceType.INSERT_STREAMING;
         MetricRepo.COUNTER_LOAD_ADD.increase(1L);
         long transactionId = -1;

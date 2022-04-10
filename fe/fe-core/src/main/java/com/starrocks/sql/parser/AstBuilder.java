@@ -25,6 +25,7 @@ import com.starrocks.analysis.CreateViewStmt;
 import com.starrocks.analysis.DateLiteral;
 import com.starrocks.analysis.DecimalLiteral;
 import com.starrocks.analysis.DefaultValueExpr;
+import com.starrocks.analysis.DeleteStmt;
 import com.starrocks.analysis.DistributionDesc;
 import com.starrocks.analysis.ExistsPredicate;
 import com.starrocks.analysis.Expr;
@@ -47,6 +48,7 @@ import com.starrocks.analysis.LimitElement;
 import com.starrocks.analysis.LiteralExpr;
 import com.starrocks.analysis.MultiRangePartitionDesc;
 import com.starrocks.analysis.NullLiteral;
+import com.starrocks.analysis.OdbcScalarFunctionCall;
 import com.starrocks.analysis.OrderByElement;
 import com.starrocks.analysis.OutFileClause;
 import com.starrocks.analysis.ParseNode;
@@ -79,6 +81,7 @@ import com.starrocks.common.AnalysisException;
 import com.starrocks.common.ErrorCode;
 import com.starrocks.common.ErrorReport;
 import com.starrocks.common.NotImplementedException;
+import com.starrocks.mysql.MysqlPassword;
 import com.starrocks.qe.SqlModeHelper;
 import com.starrocks.sql.analyzer.RelationId;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -101,6 +104,8 @@ import com.starrocks.sql.ast.TableRelation;
 import com.starrocks.sql.ast.UnionRelation;
 import com.starrocks.sql.ast.UnitIdentifier;
 import com.starrocks.sql.ast.ValuesRelation;
+import com.starrocks.sql.common.ErrorType;
+import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.sql.optimizer.base.SetQualifier;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
@@ -244,11 +249,11 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitExpressionOrDefault(StarRocksParser.ExpressionOrDefaultContext ctx) {
-        if (ctx.DEFAULT() != null) {
+    public ParseNode visitExpressionOrDefault(StarRocksParser.ExpressionOrDefaultContext context) {
+        if (context.DEFAULT() != null) {
             return new DefaultValueExpr();
         } else {
-            return visit(ctx.expression());
+            return visit(context.expression());
         }
     }
 
@@ -293,23 +298,39 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
-    public ParseNode visitUpdate(StarRocksParser.UpdateContext ctx) {
-        QualifiedName qualifiedName = getQualifiedName(ctx.qualifiedName());
+    public ParseNode visitUpdate(StarRocksParser.UpdateContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
         TableName targetTableName = qualifiedNameToTableName(qualifiedName);
-        List<ColumnAssignment> assignments = visit(ctx.assignmentList().assignment(), ColumnAssignment.class);
-        Expr where = ctx.where != null ? (Expr) visit(ctx.where) : null;
+        List<ColumnAssignment> assignments = visit(context.assignmentList().assignment(), ColumnAssignment.class);
+        Expr where = context.where != null ? (Expr) visit(context.where) : null;
         UpdateStmt ret = new UpdateStmt(targetTableName, assignments, where);
-        if (ctx.explainDesc() != null) {
-            ret.setIsExplain(true, getExplainType(ctx.explainDesc()));
+        if (context.explainDesc() != null) {
+            ret.setIsExplain(true, getExplainType(context.explainDesc()));
         }
         return ret;
     }
 
     @Override
-    public ParseNode visitAssignment(StarRocksParser.AssignmentContext ctx) {
-        String column = ((Identifier) visit(ctx.identifier())).getValue();
-        Expr expr = (Expr) visit(ctx.expressionOrDefault());
+    public ParseNode visitAssignment(StarRocksParser.AssignmentContext context) {
+        String column = ((Identifier) visit(context.identifier())).getValue();
+        Expr expr = (Expr) visit(context.expressionOrDefault());
         return new ColumnAssignment(column, expr);
+    }
+
+    @Override
+    public ParseNode visitDelete(StarRocksParser.DeleteContext context) {
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        TableName targetTableName = qualifiedNameToTableName(qualifiedName);
+        PartitionNames partitionNames = null;
+        if (context.partitionNames() != null) {
+            partitionNames = (PartitionNames) visit(context.partitionNames());
+        }
+        Expr where = context.where != null ? (Expr) visit(context.where) : null;
+        DeleteStmt ret = new DeleteStmt(targetTableName, partitionNames, where);
+        if (context.explainDesc() != null) {
+            ret.setIsExplain(true, getExplainType(context.explainDesc()));
+        }
+        return ret;
     }
 
     @Override
@@ -488,7 +509,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 RelationId.of(queryRelation).hashCode(),
                 ((Identifier) visit(context.name)).getValue(),
                 columnNames,
-                queryRelation);
+                new QueryStatement(queryRelation));
     }
 
     @Override
@@ -569,7 +590,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 Iterator<Relation> iterator = relations.iterator();
                 Relation relation = iterator.next();
                 while (iterator.hasNext()) {
-                    relation = new JoinRelation(JoinOperator.CROSS_JOIN, relation, iterator.next(), null, false);
+                    relation = new JoinRelation(null, relation, iterator.next(), null, false);
                 }
                 from = relation;
             }
@@ -782,6 +803,11 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     // ------------------------------------------- Relation -------------------------------------------
 
     @Override
+    public ParseNode visitParenthesizedRelation(StarRocksParser.ParenthesizedRelationContext context) {
+        return visit(context.relation());
+    }
+
+    @Override
     public ParseNode visitTableName(StarRocksParser.TableNameContext context) {
         QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
         TableName tableName = qualifiedNameToTableName(qualifiedName);
@@ -913,13 +939,13 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     @Override
     public ParseNode visitSubquery(StarRocksParser.SubqueryContext context) {
-        return new SubqueryRelation(null, (QueryRelation) visit(context.query()));
+        return new SubqueryRelation(new QueryStatement((QueryRelation) visit(context.query())));
     }
 
     @Override
     public ParseNode visitSubqueryPrimary(StarRocksParser.SubqueryPrimaryContext context) {
         SubqueryRelation subqueryRelation = (SubqueryRelation) visit(context.subquery());
-        return subqueryRelation.getQuery();
+        return subqueryRelation.getQueryStatement().getQueryRelation();
     }
 
     @Override
@@ -930,7 +956,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     @Override
     public ParseNode visitSubqueryExpression(StarRocksParser.SubqueryExpressionContext context) {
         SubqueryRelation subqueryRelation = (SubqueryRelation) visit(context.subquery());
-        return new Subquery(subqueryRelation.getQuery());
+        return new Subquery(subqueryRelation.getQueryStatement());
     }
 
     @Override
@@ -938,20 +964,20 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         boolean isNotIn = context.NOT() != null;
         QueryRelation query = (QueryRelation) visit(context.query());
 
-        return new InPredicate((Expr) visit(context.value), new Subquery(query), isNotIn);
+        return new InPredicate((Expr) visit(context.value), new Subquery(new QueryStatement(query)), isNotIn);
     }
 
     @Override
     public ParseNode visitExists(StarRocksParser.ExistsContext context) {
         QueryRelation query = (QueryRelation) visit(context.query());
-        return new ExistsPredicate(new Subquery(query), false);
+        return new ExistsPredicate(new Subquery(new QueryStatement(query)), false);
     }
 
     @Override
     public ParseNode visitScalarSubquery(StarRocksParser.ScalarSubqueryContext context) {
         BinaryPredicate.Operator op = getComparisonOperator(((TerminalNode) context.comparisonOperator().getChild(0))
                 .getSymbol());
-        Subquery subquery = new Subquery((QueryRelation) visit(context.query()));
+        Subquery subquery = new Subquery(new QueryStatement((QueryRelation) visit(context.query())));
         return new BinaryPredicate(op, (Expr) visit(context.booleanExpression()), subquery);
     }
 
@@ -1077,7 +1103,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     @Override
     public ParseNode visitSimpleCase(StarRocksParser.SimpleCaseContext context) {
         return new CaseExpr(
-                (Expr) visit(context.valueExpression()),
+                (Expr) visit(context.caseExpr),
                 visit(context.whenClause(), CaseWhenClause.class),
                 (Expr) visitIfPresent(context.elseExpression));
     }
@@ -1099,7 +1125,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     @Override
     public ParseNode visitArithmeticUnary(StarRocksParser.ArithmeticUnaryContext context) {
-        Expr child = (Expr) visit(context.valueExpression());
+        Expr child = (Expr) visit(context.primaryExpression());
         switch (context.operator.getType()) {
             case StarRocksLexer.MINUS_SYMBOL:
                 if (child.isLiteral() && child.getType().isNumericType()) {
@@ -1116,6 +1142,8 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                 return child;
             case StarRocksLexer.BITNOT:
                 return new ArithmeticExpr(ArithmeticExpr.Operator.BITNOT, child, null);
+            case StarRocksLexer.LOGICAL_NOT:
+                return new CompoundPredicate(CompoundPredicate.Operator.NOT, child, null);
             default:
                 throw new UnsupportedOperationException("Unsupported sign: " + context.operator.getText());
         }
@@ -1165,13 +1193,18 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
         throw new UnsupportedOperationException("Unsupported operator: " + operator.getText());
     }
 
+    @Override
+    public ParseNode visitOdbcFunctionCallExpression(StarRocksParser.OdbcFunctionCallExpressionContext context) {
+        FunctionCallExpr functionCallExpr = (FunctionCallExpr) visit(context.functionCall());
+        OdbcScalarFunctionCall odbcScalarFunctionCall = new OdbcScalarFunctionCall(functionCallExpr);
+        return odbcScalarFunctionCall.mappingFunction();
+    }
+
     private static final List<String> DATE_FUNCTIONS =
             Lists.newArrayList("DATE_ADD", "ADDDATE", "DAYS_ADD", "DATE_SUB", "SUBDATE", "DAYS_SUB");
 
     @Override
-    public ParseNode visitFunctionCall(StarRocksParser.FunctionCallContext context) {
-        boolean isStar = context.ASTERISK_SYMBOL() != null;
-        boolean distinct = context.setQuantifier() != null && context.setQuantifier().DISTINCT() != null;
+    public ParseNode visitSimpleFunctionCall(StarRocksParser.SimpleFunctionCallContext context) {
 
         String functionName = getQualifiedName(context.qualifiedName()).toString();
 
@@ -1201,27 +1234,41 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             return new IsNullPredicate(params.get(0), false);
         }
 
-        FunctionCallExpr functionCallExpr;
-        if (isStar) {
-            functionCallExpr = new FunctionCallExpr(getQualifiedName(context.qualifiedName()).toString(),
-                    FunctionParams.createStarParam());
-        } else {
-            functionCallExpr = new FunctionCallExpr(getQualifiedName(context.qualifiedName()).toString(),
-                    new FunctionParams(distinct, visit(context.expression(), Expr.class)));
-        }
+        FunctionCallExpr functionCallExpr = new FunctionCallExpr(getQualifiedName(context.qualifiedName()).toString(),
+                new FunctionParams(false, visit(context.expression(), Expr.class)));
 
         if (context.over() != null) {
-            functionCallExpr.setIsAnalyticFnCall(true);
-            List<OrderByElement> orderByElements = new ArrayList<>();
-            if (context.over().ORDER() != null) {
-                orderByElements = visit(context.over().sortItem(), OrderByElement.class);
-            }
-            List<Expr> partitionExprs = visit(context.over().partition, Expr.class);
+            return buildOverClause(functionCallExpr, context.over());
+        }
+        return functionCallExpr;
+    }
 
-            return new AnalyticExpr(functionCallExpr,
-                    partitionExprs,
-                    orderByElements,
-                    (AnalyticWindow) visitIfPresent(context.over().windowFrame()));
+    @Override
+    public ParseNode visitAggregationFunctionCall(StarRocksParser.AggregationFunctionCallContext context) {
+
+        String functionName;
+        if (context.aggregationFunction().COUNT() != null) {
+            functionName = "count";
+        } else if (context.aggregationFunction().AVG() != null) {
+            functionName = "avg";
+        } else if (context.aggregationFunction().SUM() != null) {
+            functionName = "sum";
+        } else if (context.aggregationFunction().MIN() != null) {
+            functionName = "min";
+        } else if (context.aggregationFunction().MAX() != null) {
+            functionName = "max";
+        } else {
+            throw new StarRocksPlannerException("Aggregate functions are not being parsed correctly",
+                    ErrorType.INTERNAL_ERROR);
+        }
+        FunctionCallExpr functionCallExpr = new FunctionCallExpr(functionName,
+                context.aggregationFunction().ASTERISK_SYMBOL() == null ?
+                        new FunctionParams(context.aggregationFunction().DISTINCT() != null,
+                                visit(context.aggregationFunction().expression(), Expr.class)) :
+                        FunctionParams.createStarParam());
+
+        if (context.over() != null) {
+            return buildOverClause(functionCallExpr, context.over());
         }
         return functionCallExpr;
     }
@@ -1229,18 +1276,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     @Override
     public ParseNode visitWindowFunctionCall(StarRocksParser.WindowFunctionCallContext context) {
         FunctionCallExpr functionCallExpr = (FunctionCallExpr) visit(context.windowFunction());
-
-        functionCallExpr.setIsAnalyticFnCall(true);
-        List<OrderByElement> orderByElements = new ArrayList<>();
-        if (context.over().ORDER() != null) {
-            orderByElements = visit(context.over().sortItem(), OrderByElement.class);
-        }
-        List<Expr> partitionExprs = visit(context.over().partition, Expr.class);
-
-        return new AnalyticExpr(functionCallExpr,
-                partitionExprs,
-                orderByElements,
-                (AnalyticWindow) visitIfPresent(context.over().windowFrame()));
+        return buildOverClause(functionCallExpr, context.over());
     }
 
     public static final ImmutableSet<String> WindowFunctionSet = ImmutableSet.of(
@@ -1253,6 +1289,18 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                     new FunctionParams(false, visit(context.expression(), Expr.class)));
         }
         throw new ParsingException("Unknown window function " + context.name.getText());
+    }
+
+    private AnalyticExpr buildOverClause(FunctionCallExpr functionCallExpr, StarRocksParser.OverContext context) {
+        functionCallExpr.setIsAnalyticFnCall(true);
+        List<OrderByElement> orderByElements = new ArrayList<>();
+        if (context.ORDER() != null) {
+            orderByElements = visit(context.sortItem(), OrderByElement.class);
+        }
+        List<Expr> partitionExprs = visit(context.partition, Expr.class);
+
+        return new AnalyticExpr(functionCallExpr, partitionExprs, orderByElements,
+                (AnalyticWindow) visitIfPresent(context.windowFrame()));
     }
 
     @Override
@@ -1291,16 +1339,26 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             return new FunctionCallExpr("if", visit(context.expression(), Expr.class));
         } else if (context.LEFT() != null) {
             return new FunctionCallExpr("left", visit(context.expression(), Expr.class));
+        } else if (context.LIKE() != null) {
+            return new FunctionCallExpr("like", visit(context.expression(), Expr.class));
         } else if (context.MINUTE() != null) {
             return new FunctionCallExpr("minute", visit(context.expression(), Expr.class));
+        } else if (context.MOD() != null) {
+            return new FunctionCallExpr("mod", visit(context.expression(), Expr.class));
         } else if (context.MONTH() != null) {
             return new FunctionCallExpr("month", visit(context.expression(), Expr.class));
+        } else if (context.REGEXP() != null) {
+            return new FunctionCallExpr("regexp", visit(context.expression(), Expr.class));
         } else if (context.RIGHT() != null) {
             return new FunctionCallExpr("right", visit(context.expression(), Expr.class));
+        } else if (context.RLIKE() != null) {
+            return new FunctionCallExpr("regexp", visit(context.expression(), Expr.class));
         } else if (context.SECOND() != null) {
             return new FunctionCallExpr("second", visit(context.expression(), Expr.class));
         } else if (context.YEAR() != null) {
             return new FunctionCallExpr("year", visit(context.expression(), Expr.class));
+        } else if (context.PASSWORD() != null) {
+            return new StringLiteral(new String(MysqlPassword.makeScrambledPassword(context.string().getText())));
         }
 
         if (context.TIMESTAMPADD() != null || context.TIMESTAMPDIFF() != null) {
@@ -1312,7 +1370,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             return new TimestampArithmeticExpr(functionName, e3, e2, e1.getDescription());
         }
 
-        throw new SemanticException("No matching function with signature: %s(%s).", context.getText(),
+        throw new ParsingException("No matching function with signature: %s(%s).", context.getText(),
                 visit(context.expression(), Expr.class));
     }
 
@@ -1466,6 +1524,30 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     }
 
     @Override
+    public ParseNode visitArraySlice(StarRocksParser.ArraySliceContext context) {
+        throw new ParsingException("Array slice is not currently supported");
+        //TODO: support array slice in BE
+        /*
+        Expr expr = (Expr) visit(context.primaryExpression());
+
+        IntLiteral lowerBound;
+        if (context.start != null) {
+            lowerBound = new IntLiteral(Long.parseLong(context.start.getText()));
+        } else {
+            lowerBound = new IntLiteral(0);
+        }
+        IntLiteral upperBound;
+        if (context.end != null) {
+            upperBound = new IntLiteral(Long.parseLong(context.end.getText()));
+        } else {
+            upperBound = new IntLiteral(-1);
+        }
+
+        return new ArraySliceExpr(expr, lowerBound, upperBound);
+         */
+    }
+
+    @Override
     public ParseNode visitInterval(StarRocksParser.IntervalContext context) {
         return new IntervalLiteral((Expr) visit(context.value), (UnitIdentifier) visit(context.from));
     }
@@ -1509,7 +1591,7 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
                         qualifiedName.getParts().get(1),
                         qualifiedName.getParts().get(1));
             } else {
-                throw new SemanticException("Unqualified column reference " + qualifiedName);
+                throw new ParsingException("Unqualified column reference " + qualifiedName);
             }
         }
     }
@@ -1552,6 +1634,11 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
     @Override
     public ParseNode visitBackQuotedIdentifier(StarRocksParser.BackQuotedIdentifierContext context) {
         return new Identifier(context.getText().replace("`", ""));
+    }
+
+    @Override
+    public ParseNode visitDigitIdentifier(StarRocksParser.DigitIdentifierContext context) {
+        return new Identifier(context.getText());
     }
 
     // ------------------------------------------- Util Functions -------------------------------------------

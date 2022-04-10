@@ -41,8 +41,10 @@ static void setup_profile_hierarchy(RuntimeState* runtime_state, const PipelineP
 
 static void setup_profile_hierarchy(const PipelinePtr& pipeline, const DriverPtr& driver) {
     pipeline->runtime_profile()->add_child(driver->runtime_profile(), true, nullptr);
-    auto* counter = pipeline->runtime_profile()->add_counter("DegreeOfParallelism", TUnit::UNIT);
-    counter->set(static_cast<int64_t>(pipeline->source_operator_factory()->degree_of_parallelism()));
+    auto* dop_counter = ADD_COUNTER(pipeline->runtime_profile(), "DegreeOfParallelism", TUnit::UNIT);
+    COUNTER_SET(dop_counter, static_cast<int64_t>(pipeline->source_operator_factory()->degree_of_parallelism()));
+    auto* total_dop_counter = ADD_COUNTER(pipeline->runtime_profile(), "TotalDegreeOfParallelism", TUnit::UNIT);
+    COUNTER_SET(total_dop_counter, dop_counter->value());
     auto& operators = driver->operators();
     for (int32_t i = operators.size() - 1; i >= 0; --i) {
         auto& curr_op = operators[i];
@@ -178,13 +180,12 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     }
     runtime_state->set_desc_tbl(desc_tbl);
     // Set up plan
-    ExecNode* plan = nullptr;
-    RETURN_IF_ERROR(ExecNode::create_tree(runtime_state, obj_pool, fragment.plan, *desc_tbl, &plan));
+    RETURN_IF_ERROR(ExecNode::create_tree(runtime_state, obj_pool, fragment.plan, *desc_tbl, &_fragment_ctx->plan()));
+    ExecNode* plan = _fragment_ctx->plan();
     plan->push_down_join_runtime_filter_recursively(runtime_state);
     std::vector<TupleSlotMapping> empty_mappings;
     plan->push_down_tuple_slot_mappings(runtime_state, empty_mappings);
     runtime_state->set_fragment_root_id(plan->id());
-    _fragment_ctx->set_plan(plan);
 
     // Set up global dict
     if (request.fragment.__isset.query_global_dicts) {
@@ -234,14 +235,12 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     const auto& pipelines = _fragment_ctx->pipelines();
     const size_t num_pipelines = pipelines.size();
     size_t driver_id = 0;
-    size_t num_root_drivers = 0;
     for (auto n = 0; n < num_pipelines; ++n) {
         const auto& pipeline = pipelines[n];
         // DOP(degree of parallelism) of Pipeline's SourceOperator determines the Pipeline's DOP.
         const auto degree_of_parallelism = pipeline->source_operator_factory()->degree_of_parallelism();
-        LOG(INFO) << "Pipeline " << pipeline->to_readable_string() << " parallel=" << degree_of_parallelism
-                  << " fragment_instance_id=" << print_id(params.fragment_instance_id);
-        const bool is_root = pipeline->is_root();
+        VLOG_ROW << "Pipeline " << pipeline->to_readable_string() << " parallel=" << degree_of_parallelism
+                 << " fragment_instance_id=" << print_id(params.fragment_instance_id);
         // If pipeline's SourceOperator is with morsels, a MorselQueue is added to the SourceOperator.
         // at present, only OlapScanOperator need a MorselQueue attached.
         setup_profile_hierarchy(runtime_state, pipeline);
@@ -255,13 +254,10 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
             std::vector<MorselQueuePtr> morsel_queue_per_driver = morsel_queue->split_by_size(degree_of_parallelism);
             DCHECK(morsel_queue_per_driver.size() == degree_of_parallelism);
 
-            if (is_root) {
-                num_root_drivers += degree_of_parallelism;
-            }
             for (size_t i = 0; i < degree_of_parallelism; ++i) {
                 auto&& operators = pipeline->create_operators(degree_of_parallelism, i);
-                DriverPtr driver = std::make_shared<PipelineDriver>(std::move(operators), _query_ctx, _fragment_ctx,
-                                                                    driver_id++, is_root);
+                DriverPtr driver =
+                        std::make_shared<PipelineDriver>(std::move(operators), _query_ctx, _fragment_ctx, driver_id++);
                 driver->set_morsel_queue(std::move(morsel_queue_per_driver[i]));
                 auto* scan_operator = down_cast<ScanOperator*>(driver->source_operator());
                 if (wg != nullptr) {
@@ -278,14 +274,10 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
                 drivers.emplace_back(std::move(driver));
             }
         } else {
-            if (is_root) {
-                num_root_drivers += degree_of_parallelism;
-            }
-
             for (size_t i = 0; i < degree_of_parallelism; ++i) {
                 auto&& operators = pipeline->create_operators(degree_of_parallelism, i);
-                DriverPtr driver = std::make_shared<PipelineDriver>(std::move(operators), _query_ctx, _fragment_ctx,
-                                                                    driver_id++, is_root);
+                DriverPtr driver =
+                        std::make_shared<PipelineDriver>(std::move(operators), _query_ctx, _fragment_ctx, driver_id++);
                 setup_profile_hierarchy(pipeline, driver);
                 drivers.emplace_back(std::move(driver));
             }
@@ -293,7 +285,6 @@ Status FragmentExecutor::prepare(ExecEnv* exec_env, const TExecPlanFragmentParam
     }
     // The pipeline created later should be placed in the front
     runtime_state->runtime_profile()->reverse_childs();
-    _fragment_ctx->set_num_root_drivers(num_root_drivers);
     _fragment_ctx->set_drivers(std::move(drivers));
 
     if (wg != nullptr) {
@@ -392,7 +383,6 @@ void FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_st
             OpFactoryPtr sink_op = std::make_shared<MultiCastLocalExchangeSinkOperatorFactory>(
                     context->next_operator_id(), pseudo_plan_node_id, mcast_local_exchanger);
             _fragment_ctx->pipelines().back()->add_op_factory(sink_op);
-            _fragment_ctx->pipelines().back()->unset_root();
         }
 
         // ==== create source/sink pipelines ====
@@ -426,7 +416,6 @@ void FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_st
             ops.emplace_back(source_op);
             ops.emplace_back(sink_op);
             auto pp = std::make_shared<Pipeline>(context->next_pipe_id(), ops);
-            pp->set_root();
             _fragment_ctx->pipelines().emplace_back(pp);
         }
     }

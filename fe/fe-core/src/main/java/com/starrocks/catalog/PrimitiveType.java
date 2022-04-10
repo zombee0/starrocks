@@ -337,6 +337,9 @@ public enum PrimitiveType {
     public int getTypeSize() {
         int typeSize = 0;
         switch (this) {
+            case INVALID_TYPE:
+            case BINARY:
+                break;
             case NULL_TYPE:
             case BOOLEAN:
             case TINYINT:
@@ -377,6 +380,11 @@ public enum PrimitiveType {
                 // 1MB
                 typeSize = 1024 * 1024;
                 break;
+            case JSON:
+                typeSize = 1024;
+                break;
+            default:
+                Preconditions.checkState(false, "unknown type " + this);
         }
         return typeSize;
     }
@@ -423,6 +431,10 @@ public enum PrimitiveType {
 
     public boolean isStringType() {
         return (this == VARCHAR || this == CHAR || this == HLL);
+    }
+
+    public boolean isJsonType() {
+        return this == JSON;
     }
 
     public boolean isCharFamily() {

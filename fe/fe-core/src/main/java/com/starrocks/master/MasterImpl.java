@@ -64,6 +64,7 @@ import com.starrocks.common.UserException;
 import com.starrocks.load.DeleteJob;
 import com.starrocks.load.loadv2.SparkLoadJob;
 import com.starrocks.persist.ReplicaPersistInfo;
+import com.starrocks.rpc.FrontendServiceProxy;
 import com.starrocks.service.FrontendOptions;
 import com.starrocks.system.Backend;
 import com.starrocks.system.SystemInfoService;
@@ -103,6 +104,7 @@ import com.starrocks.thrift.THashDistributionInfo;
 import com.starrocks.thrift.TIndexInfo;
 import com.starrocks.thrift.TIndexMeta;
 import com.starrocks.thrift.TMasterResult;
+import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TPartitionInfo;
 import com.starrocks.thrift.TPartitionMeta;
 import com.starrocks.thrift.TPushType;
@@ -1184,13 +1186,40 @@ public class MasterImpl {
         return response;
     }
 
+    public TNetworkAddress masterAddr() {
+        String masterHost = Catalog.getCurrentCatalog().getMasterIp();
+        int masterRpcPort = Catalog.getCurrentCatalog().getMasterRpcPort();
+        return new TNetworkAddress(masterHost, masterRpcPort);
+    }
+
     public TBeginRemoteTxnResponse beginRemoteTxn(TBeginRemoteTxnRequest request) throws TException {
         TBeginRemoteTxnResponse response = new TBeginRemoteTxnResponse();
-        Database db = Catalog.getCurrentCatalog().getDb(request.getDb_id());
+        Catalog catalog = Catalog.getCurrentCatalog();
+
+        // if current node is follower, forward it to leader
+        if (!catalog.isMaster()) {
+            TNetworkAddress addr = masterAddr();
+            try {
+                LOG.info("beginRemoteTxn as follower, forward it to master. Label: {}, master: {}",
+                         request.getLabel(), addr.toString());
+                response = FrontendServiceProxy.call(addr, 10000,
+                        client -> client.beginRemoteTxn(request));
+            } catch (Exception e) {
+                LOG.warn("create thrift client failed during beginRemoteTxn, label: {}, exception: {}", request.getLabel(), e);
+                TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
+                status.setError_msgs(Lists.newArrayList("forward request to fe master failed"));
+                response.setStatus(status);
+            }
+            return response;
+        }
+
+        Database db = catalog.getDb(request.getDb_id());
         if (db == null) {
             TStatus status = new TStatus(TStatusCode.NOT_FOUND);
             status.setError_msgs(Lists.newArrayList("db not exist"));
             response.setStatus(status);
+            LOG.warn("begin remote txn failed, db: {} not exist, label: {}",
+                    request.getDb_id(), request.getLabel());
             return response;
         }
 
@@ -1201,7 +1230,7 @@ public class MasterImpl {
                     new TxnCoordinator(TxnSourceType.FE, FrontendOptions.getLocalHostAddress()),
                     LoadJobSourceType.valueOf(request.getSource_type()), request.getTimeout_second());
         } catch (Exception e) {
-            LOG.info("begin remote txn error, label {}, msg {}", request.getLabel(), e.getStackTrace());
+            LOG.warn("begin remote txn failed, label {}", request.getLabel(), e);
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
             status.setError_msgs(Lists.newArrayList(e.getMessage()));
             response.setStatus(status);
@@ -1218,13 +1247,32 @@ public class MasterImpl {
 
     public TCommitRemoteTxnResponse commitRemoteTxn(TCommitRemoteTxnRequest request) throws TException {
         TCommitRemoteTxnResponse response = new TCommitRemoteTxnResponse();
-
         Catalog catalog = Catalog.getCurrentCatalog();
+
+        // if current node is follower, forward it to leader
+        if (!catalog.isMaster()) {
+            TNetworkAddress addr = masterAddr();
+            try {
+                LOG.info("commitRemoteTxn as follower, forward it to master. txn_id: {}, master: {}",
+                         request.getTxn_id(), addr.toString());
+                response = FrontendServiceProxy.call(addr, 10000,
+                        client -> client.commitRemoteTxn(request));
+            } catch (Exception e) {
+                LOG.warn("create thrift client failed during commitRemoteTxn, txn_id: {}, exception: {}", request.getTxn_id(), e);
+                TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
+                status.setError_msgs(Lists.newArrayList("forward request to fe master failed"));
+                response.setStatus(status);
+            }
+            return response;
+        }
+
         Database db = catalog.getDb(request.getDb_id());
         if (db == null) {
             TStatus status = new TStatus(TStatusCode.NOT_FOUND);
             status.setError_msgs(Lists.newArrayList("db not exist or already deleted"));
             response.setStatus(status);
+            LOG.warn("commit remote txn failed, db: {} not exist, txn id: {}",
+                    request.getDb_id(), request.getTxn_id());
             return response;
         }
 
@@ -1246,6 +1294,7 @@ public class MasterImpl {
                 return response;
             }
         } catch (UserException e) {
+            LOG.warn("commit remote txn failed, txn id {}", request.getTxn_id(), e);
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
             status.setError_msgs(Lists.newArrayList(e.getMessage()));
             response.setStatus(status);
@@ -1261,11 +1310,31 @@ public class MasterImpl {
     public TAbortRemoteTxnResponse abortRemoteTxn(TAbortRemoteTxnRequest request) throws TException {
         TAbortRemoteTxnResponse response = new TAbortRemoteTxnResponse();
         Catalog catalog = Catalog.getCurrentCatalog();
+
+        // if current node is follower, forward it to leader
+        if (!catalog.isMaster()) {
+            TNetworkAddress addr = masterAddr();
+            try {
+                LOG.info("abortRemoteTxn as follower, forward it to master. txn_id: {}, master: {}",
+                         request.getTxn_id(), addr.toString());
+                response = FrontendServiceProxy.call(addr, 10000,
+                        client -> client.abortRemoteTxn(request));
+            } catch (Exception e) {
+                LOG.warn("create thrift client failed during abortRemoteTxn, txn_id: {}, exception: {}", request.getTxn_id(), e);
+                TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
+                status.setError_msgs(Lists.newArrayList("forward request to fe master failed"));
+                response.setStatus(status);
+            }
+            return response;
+        }
+
         Database db = catalog.getDb(request.getDb_id());
         if (db == null) {
             TStatus status = new TStatus(TStatusCode.NOT_FOUND);
             status.setError_msgs(Lists.newArrayList("db not exist or already deleted"));
             response.setStatus(status);
+            LOG.warn("abort remote txn failed, db: {} not exist, txn id: {}",
+                    request.getDb_id(), request.getTxn_id());
             return response;
         }
 
@@ -1273,6 +1342,7 @@ public class MasterImpl {
             Catalog.getCurrentGlobalTransactionMgr().abortTransaction(
                     request.getDb_id(), request.getTxn_id(), request.getError_msg());
         } catch (Exception e) {
+            LOG.warn("abort remote txn failed, txn id {}", request.getTxn_id(), e);
             TStatus status = new TStatus(TStatusCode.INTERNAL_ERROR);
             status.setError_msgs(Lists.newArrayList(e.getMessage()));
             response.setStatus(status);

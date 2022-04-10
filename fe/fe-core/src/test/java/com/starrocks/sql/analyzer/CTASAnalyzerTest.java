@@ -17,6 +17,7 @@ import com.starrocks.system.SystemInfoService;
 import com.starrocks.utframe.StarRocksAssert;
 import com.starrocks.utframe.UtFrameUtils;
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -26,9 +27,6 @@ import static com.starrocks.sql.optimizer.statistics.CachedStatisticStorageTest.
 
 
 public class CTASAnalyzerTest {
-    // use a unique dir so that it won't be conflict with other unit test which
-    // may also start a Mocked Frontend
-    private static String runningDir = "fe/mocked/CTASAnalyzerTest/" + UUID.randomUUID().toString() + "/";
     private static ConnectContext connectContext;
     private static StarRocksAssert starRocksAssert;
 
@@ -38,7 +36,7 @@ public class CTASAnalyzerTest {
         FeConstants.default_scheduler_interval_millisecond = 100;
         Config.dynamic_partition_enable = true;
         Config.dynamic_partition_check_interval_seconds = 1;
-        UtFrameUtils.createMinStarRocksCluster(runningDir);
+        UtFrameUtils.createMinStarRocksCluster();
 
         // create connect context
         connectContext = UtFrameUtils.createDefaultCtx();
@@ -177,11 +175,6 @@ public class CTASAnalyzerTest {
                         ");");
     }
 
-    @AfterClass
-    public static void tearDown() {
-        UtFrameUtils.cleanStarRocksFeDir(runningDir);
-    }
-
     @Test
     public void testSimpleCase() throws Exception {
         ConnectContext ctx = starRocksAssert.getCtx();
@@ -299,12 +292,21 @@ public class CTASAnalyzerTest {
                 "\"in_memory\" = \"false\",\n" +
                 "\"storage_format\" = \"DEFAULT\"\n" +
                 ");");
+
         String ctasSql = "CREATE TABLE `decimal_ctas1` as " +
                 "SELECT  c_2_0, c_2_1, c_2_2, c_2_3, c_2_4, c_2_5, c_2_6, c_2_7, c_2_8, c_2_9, c_2_10, c_2_11, c_2_12, c_2_14, c_2_15 " +
                 "FROM     t2 WHERE     (NOT (false)) " +
                 "GROUP BY c_2_0, c_2_1, c_2_2, c_2_3, c_2_4, c_2_5, c_2_6, c_2_7, c_2_8, c_2_9, c_2_10, c_2_11, c_2_12, c_2_14, c_2_15";
         CreateTableAsSelectStmt createTableStmt = (CreateTableAsSelectStmt) UtFrameUtils.parseStmtWithNewParser(ctasSql, ctx);
         createTableStmt.createTable(ctx);
+
+        String ctasSql2 = "CREATE TABLE v2 as select NULL from t2";
+        try {
+            CreateTableAsSelectStmt createTableStmt2 = (CreateTableAsSelectStmt) UtFrameUtils.parseStmtWithNewParser(ctasSql2, ctx);
+        } catch (Exception ex) {
+            Assert.assertTrue(ex.getMessage().contains("Unsupported CTAS transform type: null"));
+        }
+
     }
 
 }

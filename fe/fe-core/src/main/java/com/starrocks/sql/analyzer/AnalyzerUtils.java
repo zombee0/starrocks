@@ -12,6 +12,7 @@ import com.starrocks.analysis.FunctionName;
 import com.starrocks.analysis.GroupingFunctionCallExpr;
 import com.starrocks.analysis.InsertStmt;
 import com.starrocks.analysis.StatementBase;
+import com.starrocks.analysis.Subquery;
 import com.starrocks.analysis.TableName;
 import com.starrocks.analysis.UpdateStmt;
 import com.starrocks.catalog.AggregateFunction;
@@ -64,6 +65,14 @@ public class AnalyzerUtils {
         expression.collectAll((Predicate<Expr>) arg -> arg instanceof GroupingFunctionCallExpr, calls);
         if (!calls.isEmpty()) {
             throw new SemanticException("%s clause cannot contain grouping", clause);
+        }
+    }
+
+    public static void verifyNoSubQuery(Expr expression, String clause) {
+        List<Subquery> calls = Lists.newArrayList();
+        expression.collectAll((Predicate<Expr>) arg -> arg instanceof Subquery, calls);
+        if (!calls.isEmpty()) {
+            throw new SemanticException("%s clause cannot contain subquery", clause);
         }
     }
 
@@ -152,12 +161,12 @@ public class AnalyzerUtils {
 
         @Override
         public Void visitSubquery(SubqueryRelation node, Void context) {
-            return visit(node.getQuery());
+            return visit(node.getQueryStatement());
         }
 
         public Void visitView(ViewRelation node, Void context) {
             getDB(node.getName());
-            return visit(node.getQuery(), context);
+            return visit(node.getQueryStatement(), context);
         }
 
         @Override
@@ -178,7 +187,7 @@ public class AnalyzerUtils {
 
         @Override
         public Void visitCTE(CTERelation node, Void context) {
-            return visit(node.getCteQuery());
+            return visit(node.getCteQueryStatement());
         }
 
         @Override
@@ -229,12 +238,12 @@ public class AnalyzerUtils {
 
         @Override
         public Void visitSubquery(SubqueryRelation node, Void context) {
-            return visit(node.getQuery());
+            return visit(node.getQueryStatement());
         }
 
 
         public Void visitView(ViewRelation node, Void context) {
-            return visit(node.getQuery(), context);
+            return visit(node.getQueryStatement(), context);
         }
 
         @Override
@@ -264,7 +273,7 @@ public class AnalyzerUtils {
 
         @Override
         public Void visitCTE(CTERelation node, Void context) {
-            return visit(node.getCteQuery());
+            return visit(node.getCteQueryStatement());
         }
 
         @Override
@@ -289,7 +298,7 @@ public class AnalyzerUtils {
         @Override
         public Void visitTable(TableRelation node, Void context) {
             Table table = node.getTable();
-            tables.put(node.getAlias(), table);
+            tables.put(node.getResolveTableName(), table);
             return null;
         }
     }
