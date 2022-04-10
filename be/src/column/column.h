@@ -116,6 +116,9 @@ public:
 
 
 class Column: COW<Column> {
+private:
+    friend class COW<Column>;
+
 public:
     // we use append fixed size to achieve faster memory copy.
     // We copy 350M rows, which total length is 2GB, max length is 15.
@@ -137,9 +140,9 @@ public:
     static const uint64_t MAX_LARGE_CAPACITY_LIMIT = UINT64_MAX;
 
     // mutable operations cannot be applied to shared data when concurrent
-    // using Ptr = std::shared_ptr<Column>;
+    // using Ptr = std::shared_ptr<Column>; // inherit from COW<Column>
     // mutable means you could modify the data safely
-    // using MutablePtr = std::unique_ptr<Column>;
+    // using MutablePtr = std::unique_ptr<Column>; // inherit from COW<Column>
 
     virtual ~Column() = default;
 
@@ -467,29 +470,29 @@ public:
     template <typename... Args>
     ColumnFactory(Args&&... args) : Base(std::forward<Args>(args)...) {}
     // mutable operations cannot be applied to shared data when concurrent
-    using Ptr = std::shared_ptr<Derived>;
+    using Ptr = typename Base::template immutable_ptr<Derived>;
     // mutable means you could modify the data safely
-    using MutablePtr = std::unique_ptr<Derived>;
+    using MutablePtr = typename Base::template mutable_ptr<Derived>;
     using AncestorBaseType = std::enable_if_t<std::is_base_of_v<AncestorBase, Base>, AncestorBase>;
 
     template <typename... Args>
     static Ptr create(Args&&... args) {
-        return std::make_shared<Derived>(std::forward<Args>(args)...);
+        return Ptr(new Derived(std::forward<Args>(args)...));
     }
 
     template <typename... Args>
     static MutablePtr create_mutable(Args&&... args) {
-        return std::make_unique<Derived>(std::forward<Args>(args)...);
+        return MutablePtr(new Derived(std::forward<Args>(args)...));
     }
 
     template <typename T>
     static Ptr create(std::initializer_list<T>&& arg) {
-        return std::make_shared<Derived>(std::forward<std::initializer_list<T>>(arg));
+        return Ptr(new Derived(std::forward<std::initializer_list<T>>(arg)));
     }
 
     template <typename T>
     static MutablePtr create_mutable(std::initializer_list<T>&& arg) {
-        return std::make_unique<Derived>(std::forward<std::initializer_list<T>>(arg));
+        return MutablePtr(new Derived(std::forward<std::initializer_list<T>>(arg)));
     }
 
     typename AncestorBaseType::MutablePtr clone() const override {

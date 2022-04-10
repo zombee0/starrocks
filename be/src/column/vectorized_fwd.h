@@ -20,6 +20,9 @@ class TimestampValue;
 
 typedef __int128 int128_t;
 
+template <typename T>
+class COW;
+
 class Chunk;
 class Field;
 class Column;
@@ -46,8 +49,8 @@ class DecimalV3Column;
 template <typename T>
 class BinaryColumnBase;
 
-using ColumnPtr = std::shared_ptr<Column>;
-using MutableColumnPtr = std::unique_ptr<Column>;
+using ColumnPtr =  COW<Column>::Ptr;
+using MutableColumnPtr = COW<Column>::MutablePtr;
 using Columns = std::vector<ColumnPtr>;
 using MutableColumns = std::vector<MutableColumnPtr>;
 
