@@ -213,7 +213,7 @@ public:
     template <typename Type>
     static inline typename Type::Ptr as_column(ColumnPtr value) {
         //return std::static_pointer_cast<Type>(value);
-        return typename Type::Ptr(static_cast<Type*>(value.get()));
+        return typename Type::Ptr(dynamic_cast<Type*>(value.get()));
     }
 
     /**
