@@ -9,6 +9,7 @@
 #include <map>
 #include <vector>
 
+#include "column/column_helper.h"
 #include "common/object_pool.h"
 #include "gen_cpp/Exprs_types.h"
 #include "gutil/strings/substitute.h"
@@ -502,9 +503,9 @@ std::vector<DecimalV2Value> convert_orc_to_starrocks_decimalv2(RuntimeState* sta
     CHECK(!st.ok());
     std::filesystem::remove(filename);
 
-    auto nullable = std::static_pointer_cast<NullableColumn>(chunk->get_column_by_index(0));
+    auto nullable = ColumnHelper::as_column<NullableColumn>(chunk->get_column_by_index(0));
     CHECK(!nullable->has_null());
-    auto decimal_col = std::static_pointer_cast<DecimalColumn>(nullable->data_column());
+    auto decimal_col = ColumnHelper::as_column<DecimalColumn>(nullable->data_column());
     return decimal_col->get_data();
 }
 
@@ -833,9 +834,9 @@ std::vector<TimestampValue> convert_orc_to_starrocks_timestamp(RuntimeState* sta
     CHECK(!st.ok());
     std::filesystem::remove(filename);
 
-    auto nullable = std::static_pointer_cast<NullableColumn>(chunk->get_column_by_index(0));
+    auto nullable = ColumnHelper::as_column<NullableColumn>(chunk->get_column_by_index(0));
     CHECK(!nullable->has_null());
-    auto ts_col = std::static_pointer_cast<TimestampColumn>(nullable->data_column());
+    auto ts_col = ColumnHelper::as_column<TimestampColumn>(nullable->data_column());
     return ts_col->get_data();
 }
 

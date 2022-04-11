@@ -97,6 +97,9 @@ public:
         return const_cast<COW *>(this)->getPtr();
     }
 
+    bool unique() const {
+        return this->use_count() == 1;
+    }
 };
 
 }

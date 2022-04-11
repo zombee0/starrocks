@@ -60,7 +60,7 @@ TEST_F(UnionIteratorTest, union_two) {
     auto iter = new_union_iterator({sub1, sub2});
 
     auto get_row = [](const ChunkPtr& chunk, size_t row) -> int32_t {
-        auto c = std::dynamic_pointer_cast<FixedLengthColumn<int32_t>>(chunk->get_column_by_index(0));
+        auto c = ColumnHelper::as_column<FixedLengthColumn<int32_t>>(chunk->get_column_by_index(0));
         return c->get_data()[row];
     };
 
@@ -99,7 +99,7 @@ TEST_F(UnionIteratorTest, union_one) {
     iter->init_encoded_schema(EMPTY_GLOBAL_DICTMAPS);
 
     auto get_row = [](const ChunkPtr& chunk, size_t row) -> int32_t {
-        auto c = std::dynamic_pointer_cast<FixedLengthColumn<int32_t>>(chunk->get_column_by_index(0));
+        auto c = ColumnHelper::as_column<FixedLengthColumn<int32_t>>(chunk->get_column_by_index(0));
         return c->get_data()[row];
     };
 

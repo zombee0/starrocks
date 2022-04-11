@@ -628,8 +628,8 @@ PARALLEL_TEST(ArrayColumnTest, test_copy_constructor) {
     c0->reset_column();
     ASSERT_EQ("[1, 2, 3]", c1.debug_item(0));
     ASSERT_EQ("[4, 5, 6]", c1.debug_item(1));
-    ASSERT_TRUE(c1.elements_column().unique());
-    ASSERT_TRUE(c1.offsets_column().unique());
+    ASSERT_TRUE(c1.elements_column()->unique());
+    ASSERT_TRUE(c1.offsets_column()->unique());
 }
 
 // NOLINTNEXTLINE
@@ -653,8 +653,8 @@ PARALLEL_TEST(ArrayColumnTest, test_move_constructor) {
     ArrayColumn c1(std::move(*c0));
     ASSERT_EQ("[1, 2, 3]", c1.debug_item(0));
     ASSERT_EQ("[4, 5, 6]", c1.debug_item(1));
-    ASSERT_TRUE(c1.elements_column().unique());
-    ASSERT_TRUE(c1.offsets_column().unique());
+    ASSERT_TRUE(c1.elements_column()->unique());
+    ASSERT_TRUE(c1.offsets_column()->unique());
 }
 
 // NOLINTNEXTLINE
@@ -680,8 +680,8 @@ PARALLEL_TEST(ArrayColumnTest, test_copy_assignment) {
     c0->reset_column();
     ASSERT_EQ("[1, 2, 3]", c1.debug_item(0));
     ASSERT_EQ("[4, 5, 6]", c1.debug_item(1));
-    ASSERT_TRUE(c1.elements_column().unique());
-    ASSERT_TRUE(c1.offsets_column().unique());
+    ASSERT_TRUE(c1.elements_column()->unique());
+    ASSERT_TRUE(c1.offsets_column()->unique());
 }
 
 // NOLINTNEXTLINE
@@ -706,8 +706,8 @@ PARALLEL_TEST(ArrayColumnTest, test_move_assignment) {
     c1 = std::move(*c0);
     ASSERT_EQ("[1, 2, 3]", c1.debug_item(0));
     ASSERT_EQ("[4, 5, 6]", c1.debug_item(1));
-    ASSERT_TRUE(c1.elements_column().unique());
-    ASSERT_TRUE(c1.offsets_column().unique());
+    ASSERT_TRUE(c1.elements_column()->unique());
+    ASSERT_TRUE(c1.offsets_column()->unique());
 }
 
 // NOLINTNEXTLINE
@@ -732,8 +732,8 @@ PARALLEL_TEST(ArrayColumnTest, test_clone) {
     c0->reset_column();
     ASSERT_EQ("[1, 2, 3]", c1->debug_item(0));
     ASSERT_EQ("[4, 5, 6]", c1->debug_item(1));
-    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->elements_column().unique());
-    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->offsets_column().unique());
+    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->elements_column()->unique());
+    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->offsets_column()->unique());
 }
 
 // NOLINTNEXTLINE
@@ -758,9 +758,9 @@ PARALLEL_TEST(ArrayColumnTest, test_clone_shared) {
     c0->reset_column();
     ASSERT_EQ("[1, 2, 3]", c1->debug_item(0));
     ASSERT_EQ("[4, 5, 6]", c1->debug_item(1));
-    ASSERT_TRUE(c1.unique());
-    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->elements_column().unique());
-    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->offsets_column().unique());
+    ASSERT_TRUE(c1->unique());
+    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->elements_column()->unique());
+    ASSERT_TRUE(down_cast<ArrayColumn*>(c1.get())->offsets_column()->unique());
 }
 
 // NOLINTNEXTLINE
