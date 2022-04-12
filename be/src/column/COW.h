@@ -13,10 +13,10 @@ template <typename Derived>
 class COWCounter;
 
 template <typename Derived>
-inline void intrusive_ptr_add_ref(const COWCounter<Derived> *p);
+void intrusive_ptr_add_ref(const COWCounter<Derived> *p);
 
 template <typename Derived>
-inline void intrusive_ptr_release(const COWCounter<Derived> *p);
+void intrusive_ptr_release(const COWCounter<Derived> *p);
 
 
 template <typename Derived>
@@ -59,7 +59,7 @@ inline void intrusive_ptr_release(const COWCounter<Derived> *p) {
 
 
 template <typename Derived>
-class COW : COWCounter<Derived> { //public boost::intrusive_ref_counter<Derived> {
+class COW: public COWCounter<Derived> { //public boost::intrusive_ref_counter<Derived> {
 private:
     Derived *derived() { return static_cast<Derived *>(this); }
     const Derived *derived() const { return static_cast<const Derived *>(this); }
