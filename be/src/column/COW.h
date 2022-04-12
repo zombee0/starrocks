@@ -1,6 +1,7 @@
 #pragma once
 
-#include <boost/smart_ptr/intrusive_ref_counter.hpp>
+//#include <boost/smart_ptr/intrusive_ref_counter.hpp>
+#include <boost/smart_ptr/detail/atomic_count.hpp>
 #include <boost/smart_ptr/intrusive_ptr.hpp>
 #include <initializer_list>
 
@@ -9,7 +10,56 @@ namespace starrocks {
 namespace vectorized {
 
 template <typename Derived>
-class COW : public boost::intrusive_ref_counter<Derived> {
+class COWCounter;
+
+template <typename Derived>
+inline void intrusive_ptr_add_ref(const COWCounter<Derived> *p);
+
+template <typename Derived>
+inline void intrusive_ptr_release(const COWCounter<Derived> *p);
+
+
+template <typename Derived>
+class COWCounter
+{
+    typedef boost::detail::atomic_count type;
+private:
+    mutable type m_ref_counter;
+    bool _pool;
+
+public:
+    COWCounter(bool pool = false): m_ref_counter(0), _pool(pool) {}
+    COWCounter(COWCounter const&): m_ref_counter(0) {}
+    COWCounter& operator=(COWCounter const&) { return *this; }
+    unsigned int use_count() const
+    {
+        return static_cast< unsigned int >(static_cast< long >(m_ref_counter));
+    }
+
+protected:
+    friend void intrusive_ptr_add_ref<Derived>(const COWCounter<Derived> *p);
+    friend void intrusive_ptr_release<Derived>(const COWCounter<Derived> *p);
+};
+
+template <typename Derived>
+inline void intrusive_ptr_add_ref(const COWCounter<Derived> *p) {
+    ++p->m_ref_counter;
+}
+
+template <typename Derived>
+inline void intrusive_ptr_release(const COWCounter<Derived> *p) {
+    if (static_cast< unsigned int >(--p->m_ref_counter) == 0) {
+        if (!p->_pool)
+            delete static_cast< const Derived* >(p);
+        else
+            //tbd
+            return;
+    }
+}
+
+
+template <typename Derived>
+class COW : COWCounter<Derived> { //public boost::intrusive_ref_counter<Derived> {
 private:
     Derived *derived() { return static_cast<Derived *>(this); }
     const Derived *derived() const { return static_cast<const Derived *>(this); }
