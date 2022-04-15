@@ -21,5 +21,4 @@ add_library(Column STATIC
         column_visitor.cpp
         column_visitor_mutable.cpp
         json_column.cpp
-        column_pool.cpp
         )
