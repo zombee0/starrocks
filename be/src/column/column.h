@@ -13,6 +13,7 @@
 #include "column/COW.h"
 #include "column/datum.h"
 #include "column/vectorized_fwd.h"
+#include "common/type_list.h"
 #include "gutil/casts.h"
 #include "storage/delete_condition.h" // for DelCondSatisfied
 #include "util/slice.h"
@@ -437,8 +438,15 @@ public:
         return visitor->visit(static_cast<Derived*>(this));
     }
 
+    using ColumnPoolTypeList =
+        TypeList<Int8Column, UInt8Column, Int16Column, Int32Column, UInt32Column, Int64Column, Int128Column, 
+        FloatColumn, DoubleColumn, BinaryColumn, DateColumn, TimestampColumn, DecimalColumn, Decimal32Column, 
+        Decimal64Column, Decimal128Column>;
+
     void return_to_pool() const override {
-        return_column<Derived>(const_cast<Derived *>(static_cast<const Derived *>(this)), Base::_chunk_size);
+        if constexpr (InList<Derived, ColumnPoolTypeList>::value) {
+            return_column<Derived>(const_cast<Derived *>(static_cast<const Derived *>(this)), Base::_chunk_size);
+        }
     }
 };
 
