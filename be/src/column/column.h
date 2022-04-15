@@ -440,7 +440,7 @@ public:
 
     using ColumnPoolTypeList =
         TypeList<Int8Column, UInt8Column, Int16Column, Int32Column, UInt32Column, Int64Column, Int128Column, 
-        FloatColumn, DoubleColumn, DateColumn, TimestampColumn, DecimalColumn, Decimal32Column, 
+        FloatColumn, DoubleColumn, BinaryColumn, DateColumn, TimestampColumn, DecimalColumn, Decimal32Column, 
         Decimal64Column, Decimal128Column >;
 
     void return_to_pool() const override {
