@@ -38,7 +38,7 @@ public:
 
     FixedLengthColumnBase() = default;
 
-    //FixedLengthColumnBase(bool pool, size_t chunk_size): ColumnFactory<Column, FixedLengthColumnBase<T>>(pool, chunk_size) {}
+    FixedLengthColumnBase(bool pool, size_t chunk_size): ColumnFactory<Column, FixedLengthColumnBase<T>>(pool, chunk_size) {}
 
     explicit FixedLengthColumnBase(const size_t n) : _data(n) {}
 
