@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <type_traits>
+#include <iostream>
 
 #include "column/column_visitor.h"
 #include "column/column_visitor_mutable.h"
@@ -23,9 +24,16 @@ class MysqlRowBuffer;
 
 namespace vectorized {
 
+template <typename Derived>
+void return_column(Derived* ptr, size_t chunk_size);
+
 class Column:public COW<Column> {
 private:
     friend class COW<Column>;
+
+public:
+    Column(): COW<Column>() {}
+    Column(bool pool, size_t chunk_size): COW<Column>(pool, chunk_size) {}
 
 public:
     // we use append fixed size to achieve faster memory copy.
@@ -375,6 +383,10 @@ private:
     const Derived* derived() const { return down_cast<const Derived*>(this); }
 
 public:
+    ColumnFactory(): Base() {}
+    ColumnFactory(bool pool, size_t chunk_size): Base(pool, chunk_size) {} 
+
+public:
     template <typename... Args>
     ColumnFactory(Args&&... args) : Base(std::forward<Args>(args)...) {}
     // mutable operations cannot be applied to shared data when concurrent
@@ -423,6 +435,10 @@ public:
 
     Status accept_mutable(ColumnVisitorMutable* visitor) override {
         return visitor->visit(static_cast<Derived*>(this));
+    }
+
+    void return_to_pool() const override {
+        return_column<Derived>(const_cast<Derived *>(static_cast<const Derived *>(this)), Base::_chunk_size);
     }
 };
 

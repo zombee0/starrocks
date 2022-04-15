@@ -18,7 +18,6 @@ void intrusive_ptr_add_ref(const COWCounter<Derived> *p);
 template <typename Derived>
 void intrusive_ptr_release(const COWCounter<Derived> *p);
 
-
 template <typename Derived>
 class COWCounter
 {
@@ -27,14 +26,22 @@ private:
     mutable type m_ref_counter;
     bool _pool;
 
+protected:
+    size_t _chunk_size;
+
 public:
-    COWCounter(bool pool = false): m_ref_counter(0), _pool(pool) {}
+    COWCounter(): m_ref_counter(0), _pool(false) {}
+    COWCounter(bool pool, size_t chunk_size): m_ref_counter(0), _pool(pool), _chunk_size(chunk_size) {}
+    
     COWCounter(COWCounter const&): m_ref_counter(0) {}
     COWCounter& operator=(COWCounter const&) { return *this; }
     unsigned int use_count() const
     {
         return static_cast< unsigned int >(static_cast< long >(m_ref_counter));
     }
+
+public:
+    virtual void return_to_pool() const = 0;
 
 protected:
     friend void intrusive_ptr_add_ref<Derived>(const COWCounter<Derived> *p);
@@ -49,11 +56,11 @@ inline void intrusive_ptr_add_ref(const COWCounter<Derived> *p) {
 template <typename Derived>
 inline void intrusive_ptr_release(const COWCounter<Derived> *p) {
     if (static_cast< unsigned int >(--p->m_ref_counter) == 0) {
-        if (!p->_pool)
+        if (!p->_pool) {
             delete static_cast< const Derived* >(p);
-        else
-            //tbd
-            return;
+        } else {
+            p->return_to_pool();
+        }
     }
 }
 
@@ -63,6 +70,10 @@ class COW: public COWCounter<Derived> { //public boost::intrusive_ref_counter<De
 private:
     Derived *derived() { return static_cast<Derived *>(this); }
     const Derived *derived() const { return static_cast<const Derived *>(this); }
+
+public:
+    COW(): COWCounter<Derived>() {}
+    COW(bool pool, size_t chunk_size): COWCounter<Derived>(pool, chunk_size) {}
 
 protected:
     template <typename T>
