@@ -24,10 +24,10 @@ class COWCounter
     typedef boost::detail::atomic_count type;
 private:
     mutable type m_ref_counter;
-    bool _pool;
+    mutable bool _pool;
 
 protected:
-    size_t _chunk_size;
+    mutable size_t _chunk_size;
 
 public:
     COWCounter(): m_ref_counter(0), _pool(false) {}
@@ -42,6 +42,8 @@ public:
 
 public:
     virtual void return_to_pool() const = 0;
+    void set_chunk_size(size_t chunk_size) { _chunk_size = chunk_size; }
+    void set_pool(bool pool) { _pool = pool; } 
 
 protected:
     friend void intrusive_ptr_add_ref<Derived>(const COWCounter<Derived> *p);

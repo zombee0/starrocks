@@ -101,6 +101,8 @@ inline T* get_column_ptr(size_t chunk_size) {
     } else {
         T* ptr = get_column<T, force>();
         if (LIKELY(ptr != nullptr)) {
+            ptr->set_pool(true);
+            ptr->set_chunk_size(chunk_size);
             return ptr;
         } else {
             return (new T());

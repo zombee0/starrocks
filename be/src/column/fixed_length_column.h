@@ -12,7 +12,7 @@ public:
     using SuperClass = ColumnFactory<FixedLengthColumnBase<T>, FixedLengthColumn<T>, Column>;
     FixedLengthColumn() = default;
 
-    // FixedLengthColumn(bool pool, size_t chunk_size): SuperClass(pool, chunk_size) {}
+    //FixedLengthColumn(const bool pool, const size_t chunk_size, const bool unused): SuperClass(pool, chunk_size) {}
 
     explicit FixedLengthColumn(const size_t n) : SuperClass(n) {}
 

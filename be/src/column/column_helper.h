@@ -8,6 +8,7 @@
 
 #include <runtime/types.h>
 
+#include "column/column_pool.h"
 #include "column/const_column.h"
 #include "column/type_traits.h"
 #include "common/config.h"
