@@ -368,6 +368,10 @@ public:
 
     virtual void check_or_die() const = 0;
 
+public:
+    static MutablePtr mutate(Ptr ptr) { return ptr->deepMutate(); }
+    virtual MutablePtr deepMutate() const { return shallowMutate(); }
+
 protected:
     DelCondSatisfied _delete_state = DEL_NOT_SATISFIED;
 };
@@ -394,6 +398,9 @@ public:
     using Ptr = typename Base::template immutable_ptr<Derived>;
     // mutable means you could modify the data safely
     using MutablePtr = typename Base::template mutable_ptr<Derived>;
+    // the object containn chamelon_ptr inside itself
+    using DerivedWrappedPtr = typename Base::template chameleon_ptr<Derived>;
+
     using AncestorBaseType = std::enable_if_t<std::is_base_of_v<AncestorBase, Base>, AncestorBase>;
 
     template <typename... Args>
@@ -448,6 +455,13 @@ public:
             return_column<Derived>(const_cast<Derived *>(static_cast<const Derived *>(this)), Base::_chunk_size);
         }
     }
+protected:
+    MutablePtr shallowMutate() const { return MutablePtr(static_cast<Derived *>(Base::shallowMutate().get())); }
+    
+public:
+    MutablePtr assumeMutable() const { return MutablePtr(const_cast<Derived *>(static_cast<const Derived *>(this))); }
+
+    Derived & assumeMutableRef() const { return static_cast<Derived &>(Base::assumeMutableRef()); }
 };
 
 } // namespace vectorized

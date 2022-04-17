@@ -160,9 +160,51 @@ public:
         return const_cast<COW *>(this)->getPtr();
     }
 
+    Derived & assumeMutableRef() const {
+        return const_cast<Derived &>(*derived());
+    }
+
     bool unique() const {
         return this->use_count() == 1;
     }
+
+protected:
+    template <typename T>
+    class chameleon_ptr
+    {
+    private:
+        immutable_ptr<T> value;
+
+    public:
+        template<typename... Args>
+        chameleon_ptr(Args &&... args): value(std::forward<Args>(args)...) {}
+
+        template<typename U>
+        chameleon_ptr(std::initializer_list<U> && arg): value(std::forward<std::initializer_list<U>>(arg)) {}
+
+        const T * get() const { return value.get(); }
+        T * get() { return &value->assumeMutableRef(); }
+
+        const T * operator->() const { return get(); }
+        T * operator->() { return get(); }
+
+        const T & operator*() const { return *value; }
+        T & operator*() { return value->assumeMutableRef(); }
+
+        operator const immutable_ptr<T> & () const { return value; }
+        operator immutable_ptr<T> & () { return value; }
+
+        immutable_ptr<T> detach() && { return std::move(value); }
+
+        operator bool() const { return value != nullptr; }
+        bool operator! () const { return value == nullptr; }
+
+        bool operator== (const chameleon_ptr & rhs) const { return value == rhs.value; }
+        bool operator!= (const chameleon_ptr & rhs) const { return value != rhs.value; }
+    };
+
+public:
+    using WrappedPtr = chameleon_ptr<Derived>;
 };
 
 }

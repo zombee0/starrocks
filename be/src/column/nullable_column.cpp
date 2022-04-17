@@ -320,7 +320,7 @@ int64_t NullableColumn::xor_checksum(uint32_t from, uint32_t to) const {
 
     int64_t xor_checksum = 0;
     size_t num = _null_column->size();
-    uint8_t* src = _null_column->get_data().data();
+    const uint8_t* src = _null_column->get_data().data();
 
     // The XOR of NullableColumn
     // XOR all the 8-bit integers one by one

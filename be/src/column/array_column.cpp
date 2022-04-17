@@ -403,7 +403,7 @@ void ArrayColumn::put_mysql_row_buffer(MysqlRowBuffer* buf, size_t idx) const {
     const size_t array_size = _offsets->get_data()[idx + 1] - offset;
 
     buf->begin_push_array();
-    Column* elements = _elements.get();
+    const Column* elements = _elements.get();
     if (array_size > 0) {
         elements->put_mysql_row_buffer(buf, offset);
     }

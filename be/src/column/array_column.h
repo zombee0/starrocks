@@ -153,13 +153,20 @@ public:
 
     void check_or_die() const override;
 
+    MutableColumnPtr deepMutate() const override {
+        auto res = shallowMutate();
+        res->_elements = Column::mutate(_elements);
+        res->_offsets = UInt32Column::mutate(_offsets);
+        return res;
+    }
+
 private:
-    ColumnPtr _elements;
+    WrappedPtr _elements;
     // Offsets column will store the start position of every array element.
     // Offsets store more one data to indicate the end position.
     // For example, [1, 2, 3], [4, 5, 6].
     // The two element array has three offsets(0, 3, 6)
-    UInt32Column::Ptr _offsets;
+    UInt32Column::DerivedWrappedPtr _offsets;
 };
 
 } // namespace starrocks::vectorized

@@ -243,7 +243,7 @@ public:
             return nullable_column->mutable_data_column();
         } else if (column->is_constant()) {
             auto* const_column = down_cast<ConstColumn*>(column);
-            return const_column->mutable_data_column()->get();
+            return const_column->mutable_data_column();
         } else {
             return column;
         }

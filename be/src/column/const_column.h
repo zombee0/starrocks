@@ -169,9 +169,11 @@ public:
 
     std::string get_name() const override { return "const-" + _data->get_name(); }
 
-    ColumnPtr* mutable_data_column() { return &_data; }
+    Column* mutable_data_column() { return _data.get(); }
 
     const ColumnPtr& data_column() const { return _data; }
+
+    ColumnPtr& data_column() { return _data; }
 
     Datum get(size_t n __attribute__((unused))) const override { return _data->get(0); }
 
@@ -219,8 +221,14 @@ public:
 
     StatusOr<ColumnPtr> upgrade_if_overflow() override;
 
+    MutableColumnPtr deepMutate() const override {
+        auto res = shallowMutate();
+        res->_data = Column::mutate(_data);
+        return res;
+    }
+
 private:
-    ColumnPtr _data;
+    WrappedPtr _data;
     uint64_t _size;
 };
 
