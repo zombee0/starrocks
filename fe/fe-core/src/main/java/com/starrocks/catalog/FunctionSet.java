@@ -1127,6 +1127,7 @@ public class FunctionSet {
         Type[] realTypes = Arrays.copyOf(declTypes, declTypes.length);
         ArrayType typeArray = null;
         Type typeElement = null;
+        MapType typeMap = null;
         Type retType = fn.getReturnType();
         for (int i = 0; i < declTypes.length; i++) {
             Type declType = declTypes[i];
@@ -1138,6 +1139,16 @@ public class FunctionSet {
                 if (typeArray == null) {
                     typeArray = (ArrayType) realType;
                 } else if ((typeArray = (ArrayType) getSuperType(typeArray, realType)) == null) {
+                    LOGGER.warn("could not determine polymorphic type because input has non-match types");
+                    return null;
+                }
+            } else if (declType instanceof AnyMapType) {
+                if (realType.isNull()) {
+                    continue;
+                }
+                if (typeMap == null) {
+                    typeMap = (MapType) realType;
+                } else if ((typeMap = (MapType) getSuperType(typeMap, realType)) == null) {
                     LOGGER.warn("could not determine polymorphic type because input has non-match types");
                     return null;
                 }
@@ -1180,17 +1191,32 @@ public class FunctionSet {
             return null;
         }
 
-        if (retType instanceof AnyArrayType) {
-            retType = typeArray;
-        } else if (retType instanceof AnyElementType) {
-            retType = typeElement;
-        } else if (!(fn instanceof TableFunction)) { //TableFunction don't use retType
-            assert !retType.isPseudoType();
+        if (typeMap != null) {
+            if (retType instanceof AnyArrayType) {
+                if (fn.functionName().equals("map_keys")) {
+                    retType = new ArrayType(typeMap.getKeyType());
+                } else if (fn.functionName().equals("map_values")) {
+                    retType = new ArrayType(typeMap.getValueType());
+                } else {
+                    LOGGER.warn("not supported map function");
+                    return null;
+                }
+            }
+        } else {
+            if (retType instanceof AnyArrayType) {
+                retType = typeArray;
+            } else if (retType instanceof AnyElementType) {
+                retType = typeElement;
+            } else if (!(fn instanceof TableFunction)) { //TableFunction don't use retType
+                assert !retType.isPseudoType();
+            }
         }
 
         for (int i = 0; i < declTypes.length; i++) {
             if (declTypes[i] instanceof AnyArrayType) {
                 realTypes[i] = typeArray;
+            } else if(declTypes[i] instanceof AnyMapType) {
+                realTypes[i] = typeMap;
             } else if (declTypes[i] instanceof AnyElementType) {
                 realTypes[i] = typeElement;
             } else {
@@ -1259,6 +1285,11 @@ public class FunctionSet {
         if (t1.isArrayType() && t2.isArrayType()) {
             Type superElementType = getSuperType(((ArrayType) t1).getItemType(), ((ArrayType) t2).getItemType());
             return superElementType != null ? new ArrayType(superElementType) : null;
+        }
+        if (t1.isMapType() && t2.isMapType()) {
+            Type superKeyType = getSuperType(((MapType) t1).getKeyType(), ((MapType) t2).getKeyType());
+            Type superValueType = getSuperType(((MapType) t1).getValueType(), ((MapType) t2).getValueType());
+            return superKeyType != null && superValueType != null ? new MapType(superKeyType, superValueType) : null;
         }
         return null;
     }

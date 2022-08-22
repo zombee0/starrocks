@@ -63,6 +63,7 @@ set(EXPR_FILES
   vectorized/like_predicate.cpp
   vectorized/literal.cpp
   vectorized/locate.cpp
+  vectorized/map_functions.cpp
   vectorized/math_functions.cpp
   vectorized/percentile_functions.cpp
   vectorized/runtime_filter_bank.cpp
