@@ -5,7 +5,6 @@ import com.google.common.base.Predicate;
 import com.google.common.collect.Lists;
 import com.starrocks.analysis.AnalyticExpr;
 import com.starrocks.analysis.ArithmeticExpr;
-import com.starrocks.analysis.ArrayElementExpr;
 import com.starrocks.analysis.ArrayExpr;
 import com.starrocks.analysis.ArrowExpr;
 import com.starrocks.analysis.BetweenPredicate;
@@ -13,6 +12,7 @@ import com.starrocks.analysis.BinaryPredicate;
 import com.starrocks.analysis.CaseExpr;
 import com.starrocks.analysis.CastExpr;
 import com.starrocks.analysis.CloneExpr;
+import com.starrocks.analysis.CollectionSubscriptExpr;
 import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.analysis.ExistsPredicate;
 import com.starrocks.analysis.Expr;
@@ -152,7 +152,7 @@ public class AggregationAnalyzer {
         }
 
         @Override
-        public Boolean visitArrayElementExpr(ArrayElementExpr node, Void context) {
+        public Boolean visitCollectionSubscriptExpr(CollectionSubscriptExpr node, Void context) {
             return visit(node.getChild(0));
         }
 

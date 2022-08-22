@@ -90,7 +90,11 @@ set(EXEC_FILES
         ./exprs/vectorized/json_functions_test.cpp
         ./exprs/vectorized/lambda_function_expr_test.cpp
         ./exprs/vectorized/like_test.cpp
+<<<<<<< HEAD
         ./exprs/vectorized/map_functions_test.cpp
+=======
+        ./exprs/vectorized/map_subscript_expr_test.cpp
+>>>>>>> 1ebd9936a (support map[key])
         ./exprs/vectorized/math_functions_test.cpp
         ./exprs/vectorized/null_if_expr_test.cpp
         ./exprs/vectorized/percentile_functions_test.cpp

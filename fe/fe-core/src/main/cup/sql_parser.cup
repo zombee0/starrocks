@@ -1912,7 +1912,7 @@ array_expr ::=
 
 array_subscript ::=
   expr:e LBRACKET expr:subscript RBRACKET
-  {: RESULT = new ArrayElementExpr(e, subscript); :}
+  {: RESULT = new CollectionSubscriptExpr(e, subscript); :}
   ;
 
 array_slice ::=

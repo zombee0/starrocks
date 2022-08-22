@@ -5,7 +5,6 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.starrocks.analysis.AnalyticExpr;
 import com.starrocks.analysis.ArithmeticExpr;
-import com.starrocks.analysis.ArrayElementExpr;
 import com.starrocks.analysis.ArrayExpr;
 import com.starrocks.analysis.ArraySliceExpr;
 import com.starrocks.analysis.ArrowExpr;
@@ -14,6 +13,7 @@ import com.starrocks.analysis.BinaryPredicate;
 import com.starrocks.analysis.CaseExpr;
 import com.starrocks.analysis.CastExpr;
 import com.starrocks.analysis.CloneExpr;
+import com.starrocks.analysis.CollectionSubscriptExpr;
 import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.analysis.DateLiteral;
 import com.starrocks.analysis.ExistsPredicate;
@@ -47,7 +47,6 @@ import com.starrocks.sql.ast.LambdaFunctionExpr;
 import com.starrocks.sql.common.ErrorType;
 import com.starrocks.sql.common.StarRocksPlannerException;
 import com.starrocks.sql.optimizer.base.ColumnRefFactory;
-import com.starrocks.sql.optimizer.operator.scalar.ArrayElementOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ArrayOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ArraySliceOperator;
 import com.starrocks.sql.optimizer.operator.scalar.BetweenPredicateOperator;
@@ -56,6 +55,7 @@ import com.starrocks.sql.optimizer.operator.scalar.CallOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CaseWhenOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CastOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CloneOperator;
+import com.starrocks.sql.optimizer.operator.scalar.CollectionSubscriptOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.CompoundPredicateOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
@@ -219,18 +219,18 @@ public final class SqlToScalarOperatorTranslator {
         }
 
         @Override
-        public ScalarOperator visitArrayElementExpr(ArrayElementExpr node, Void context) {
+        public ScalarOperator visitCollectionSubscriptExpr(CollectionSubscriptExpr node, Void context) {
             Preconditions.checkState(node.getChildren().size() == 2);
-            // all selected also used in map
+            // key value all selected used in map
             if (node.getChild(0).getType().isMapType()) {
                 usedSubFieldPos.push(-1);
             }
-            ScalarOperator arrayOperator = visit(node.getChild(0));
+            ScalarOperator collectionOperator = visit(node.getChild(0));
             ScalarOperator subscriptOperator = visit(node.getChild(1));
             if (node.getChild(0).getType().isMapType()) {
                 usedSubFieldPos.pop();
             }
-            return new ArrayElementOperator(node.getType(), arrayOperator, subscriptOperator);
+            return new CollectionSubscriptOperator(node.getType(), collectionOperator, subscriptOperator);
         }
 
         @Override

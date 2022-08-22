@@ -77,7 +77,7 @@ public enum OperatorType {
      */
     SCALAR,
     ARRAY,
-    ARRAY_ELEMENT,
+    COLLECTION_SUBSCRIPT,
     ARRAY_SLICE,
     VARIABLE,
     CONSTANT,

@@ -4,7 +4,6 @@ package com.starrocks.sql.ast;
 import com.starrocks.analysis.AlterResourceStmt;
 import com.starrocks.analysis.AnalyticExpr;
 import com.starrocks.analysis.ArithmeticExpr;
-import com.starrocks.analysis.ArrayElementExpr;
 import com.starrocks.analysis.ArrayExpr;
 import com.starrocks.analysis.ArraySliceExpr;
 import com.starrocks.analysis.ArrowExpr;
@@ -15,6 +14,7 @@ import com.starrocks.analysis.CancelLoadStmt;
 import com.starrocks.analysis.CaseExpr;
 import com.starrocks.analysis.CastExpr;
 import com.starrocks.analysis.CloneExpr;
+import com.starrocks.analysis.CollectionSubscriptExpr;
 import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.analysis.CreateFunctionStmt;
 import com.starrocks.analysis.CreateMaterializedViewStmt;
@@ -750,7 +750,7 @@ public abstract class AstVisitor<R, C> {
         return visitExpression(node, context);
     }
 
-    public R visitArrayElementExpr(ArrayElementExpr node, C context) {
+    public R visitCollectionSubscriptExpr(CollectionSubscriptExpr node, C context) {
         return visitExpression(node, context);
     }
 

@@ -63,7 +63,11 @@ set(EXPR_FILES
   vectorized/like_predicate.cpp
   vectorized/literal.cpp
   vectorized/locate.cpp
+<<<<<<< HEAD
   vectorized/map_functions.cpp
+=======
+  vectorized/map_subscript_expr.cpp
+>>>>>>> 1ebd9936a (support map[key])
   vectorized/math_functions.cpp
   vectorized/percentile_functions.cpp
   vectorized/runtime_filter_bank.cpp

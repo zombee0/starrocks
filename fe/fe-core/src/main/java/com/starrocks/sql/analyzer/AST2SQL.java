@@ -5,13 +5,13 @@ import com.google.common.base.Joiner;
 import com.starrocks.analysis.AnalyticExpr;
 import com.starrocks.analysis.AnalyticWindow;
 import com.starrocks.analysis.ArithmeticExpr;
-import com.starrocks.analysis.ArrayElementExpr;
 import com.starrocks.analysis.ArrayExpr;
 import com.starrocks.analysis.ArrowExpr;
 import com.starrocks.analysis.BetweenPredicate;
 import com.starrocks.analysis.BinaryPredicate;
 import com.starrocks.analysis.CaseExpr;
 import com.starrocks.analysis.CastExpr;
+import com.starrocks.analysis.CollectionSubscriptExpr;
 import com.starrocks.analysis.CompoundPredicate;
 import com.starrocks.analysis.DecimalLiteral;
 import com.starrocks.analysis.DefaultValueExpr;
@@ -426,7 +426,7 @@ public class AST2SQL {
         }
 
         @Override
-        public String visitArrayElementExpr(ArrayElementExpr node, Void context) {
+        public String visitCollectionSubscriptExpr(CollectionSubscriptExpr node, Void context) {
             return visit(node.getChild(0)) + "[" + visit(node.getChild(1)) + "]";
         }
 
