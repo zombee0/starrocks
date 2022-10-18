@@ -147,6 +147,9 @@ private:
                                     const std::unordered_map<int, std::string>& column_id_to_orc_name,
                                     std::string* orc_column_name);
     Status _init_include_columns();
+    Status _add_include_column_id_by_slot(const SlotDescriptor* desc, std::list<uint64_t>* include_column_id);
+    Status _add_include_column_id_by_type(const TypeDescriptor& desc, const orc::Type& orc_type,
+                                          std::list<uint64_t>* include_column_id);
     Status _init_position_in_orc();
     Status _init_src_types();
     Status _init_cast_exprs();

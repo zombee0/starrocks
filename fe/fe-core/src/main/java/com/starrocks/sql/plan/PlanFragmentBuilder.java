@@ -634,6 +634,9 @@ public class PlanFragmentBuilder {
                 slotDescriptor.setColumn(entry.getValue());
                 slotDescriptor.setIsNullable(entry.getValue().isAllowNull());
                 slotDescriptor.setIsMaterialized(true);
+                if (slotDescriptor.getType().isComplexType()) {
+                    slotDescriptor.setUsedSubfieldPosGroup(entry.getKey().getUsedSubfieldPosGroup());
+                }
                 context.getColRefToExpr().put(entry.getKey(), new SlotRef(entry.getKey().toString(), slotDescriptor));
             }
         }

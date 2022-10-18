@@ -11,6 +11,8 @@ import com.starrocks.thrift.TTypeDesc;
 import com.starrocks.thrift.TTypeNode;
 import com.starrocks.thrift.TTypeNodeType;
 
+import java.util.Arrays;
+
 /**
  * Describes an ARRAY type.
  */
@@ -22,10 +24,12 @@ public class ArrayType extends Type {
         if (itemType != null && itemType.isDecimalV3()) {
             throw new InternalError("Decimal32/64/128 is not supported in current version");
         }
+        selectedFields = new Boolean[] { true };
         this.itemType = itemType;
     }
 
     public ArrayType(Type itemType, boolean fromSubQuery) {
+        selectedFields = new Boolean[] { true };
         this.itemType = itemType;
     }
 
@@ -75,6 +79,7 @@ public class ArrayType extends Type {
         container.types.add(node);
         Preconditions.checkNotNull(itemType);
         node.setType(TTypeNodeType.ARRAY);
+        node.setSelected_fields(Arrays.asList(selectedFields));
         itemType.toThrift(container);
     }
 
@@ -101,6 +106,23 @@ public class ArrayType extends Type {
         ArrayType clone = (ArrayType) super.clone();
         clone.itemType = this.itemType.clone();
         return clone;
+    }
+
+    @Override
+    public void setSelectedField(int pos, boolean needSetChildren) {
+        if (needSetChildren) {
+            if (itemType.isComplexType()) {
+                itemType.selectAll();
+            }
+        }
+    }
+
+    @Override
+    public void selectAll() {
+        Arrays.fill(selectedFields, true);
+        if (itemType.isComplexType()) {
+            itemType.selectAll();
+        }
     }
 
     /**

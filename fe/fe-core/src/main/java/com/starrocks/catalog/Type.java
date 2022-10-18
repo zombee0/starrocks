@@ -51,6 +51,10 @@ import java.util.stream.Collectors;
  */
 public abstract class Type implements Cloneable {
     private static final Logger LOG = LogManager.getLogger(Type.class);
+
+    // used for nested type such as map and struct
+    protected Boolean[] selectedFields;
+
     public static final int BINARY = 63;
     public static final int CHARSET_UTF8 = 33;
 
@@ -537,6 +541,20 @@ public abstract class Type implements Cloneable {
      * prettyPrint() with space-indented nested types.
      */
     protected abstract String prettyPrint(int lpad);
+
+    /**
+     * Used for Nest Type
+     */
+    public void setSelectedField(int pos, boolean needSetChildren) {
+        throw new IllegalStateException("setSelectedField() not implemented for type " + toSql());
+    }
+
+    /**
+     * Used for Nest Type
+     */
+    public void selectAll() {
+        throw new IllegalStateException("selectAll() not implemented for type " + toSql());
+    }
 
     public boolean isInvalid() {
         return isScalarType(PrimitiveType.INVALID_TYPE);

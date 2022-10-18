@@ -944,19 +944,27 @@ static void fill_map_column(orc::ColumnVectorBatch* cvb, ColumnPtr& col, int fro
     UInt32Column* offsets = col_map->offsets_column().get();
     copy_array_offset(orc_map->offsets, from, size + 1, offsets);
 
-    ColumnPtr& keys = col_map->keys_column();
-    const TypeDescriptor& key_type = type_desc.children[0];
-    const FillColumnFunction& fn_fill_keys = find_fill_func(key_type.type, true);
+    ColumnPtr &keys = col_map->keys_column();
     const int keys_from = implicit_cast<int>(orc_map->offsets[from]);
     const int keys_size = implicit_cast<int>(orc_map->offsets[from + size] - keys_from);
+    if (type_desc.selected_fields[0]) {
+        const TypeDescriptor &key_type = type_desc.children[0];
+        const FillColumnFunction &fn_fill_keys = find_fill_func(key_type.type, true);
+        fn_fill_keys(orc_map->keys.get(), keys, keys_from, keys_size, key_type, ctx);
+    } else {
+        keys->append_default(keys_size);
+    }
 
-    fn_fill_keys(orc_map->keys.get(), keys, keys_from, keys_size, key_type, ctx);
-
-    ColumnPtr& values = col_map->values_column();
-    const TypeDescriptor& value_type = type_desc.children[1];
-    const FillColumnFunction& fn_fill_values = find_fill_func(value_type.type, true);
-
-    fn_fill_values(orc_map->elements.get(), values, keys_from, keys_size, value_type, ctx);
+    ColumnPtr &values = col_map->values_column();
+    const int values_from = implicit_cast<int>(orc_map->offsets[from]);
+    const int values_size = implicit_cast<int>(orc_map->offsets[from + size] - values_from);
+    if (type_desc.selected_fields[1]) {
+        const TypeDescriptor &value_type = type_desc.children[1];
+        const FillColumnFunction &fn_fill_values = find_fill_func(value_type.type, true);
+        fn_fill_values(orc_map->elements.get(), values, values_from, values_size, value_type, ctx);
+    } else {
+        values->append_default(values_size);
+    }
 }
 
 static void fill_map_column_with_null(orc::ColumnVectorBatch* cvb, ColumnPtr& col, int from, int size,
@@ -1161,10 +1169,64 @@ Status OrcChunkReader::_slot_to_orc_column_name(const SlotDescriptor* desc,
     return Status::OK();
 }
 
+Status OrcChunkReader::_add_include_column_id_by_slot(const SlotDescriptor* desc,
+                                                      std::list<uint64_t>* include_column_id) {
+    std::string col_name = format_column_name(desc->col_name(), _case_sensitive);
+    auto it = _name_to_column_id.find(col_name);
+    if (it == _name_to_column_id.end()) {
+        auto s = strings::Substitute("OrcChunkReader::init_include_columns. col name = $0 not found, file = $1",
+                                     desc->col_name(), _current_file_name);
+        return Status::NotFound(s);
+    }
+
+    include_column_id->emplace_back(it->second);
+
+    if (desc->type().type == PrimitiveType::TYPE_MAP || desc->type().type == PrimitiveType::TYPE_STRUCT
+        || desc->type().type == PrimitiveType::TYPE_ARRAY) {
+        const auto& root_type = _reader->getType();
+        for (int i = 0; i < root_type.getSubtypeCount(); i++) {
+            std::string orc_col_name = format_column_name(root_type.getFieldName(i), _case_sensitive);
+            if (orc_col_name == col_name) {
+                const auto& sub_type = root_type.getSubtype(i);
+                RETURN_IF_ERROR(_add_include_column_id_by_type(desc->type(), *sub_type, include_column_id));
+            }
+        }
+    }
+    return Status::OK();
+}
+
+Status OrcChunkReader::_add_include_column_id_by_type(const TypeDescriptor& desc, const orc::Type& orc_type,
+                                                      std::list<uint64_t>* include_column_id) {
+
+    std::cout << "type: " << desc.type << std::endl;
+    for (int i = 0; i < desc.selected_fields.size(); i++) {
+        if (desc.selected_fields[i]) {
+            std::cout << "subfield: " << i << std::endl;
+            const auto& sub_type = orc_type.getSubtype(i);
+            include_column_id->emplace_back(static_cast<int>(sub_type->getColumnId()));
+            std::cout << "orc id: " << sub_type->getColumnId() << std::endl;
+            RETURN_IF_ERROR(_add_include_column_id_by_type(desc.children[i], *sub_type, include_column_id));
+        }
+    }
+    return Status::OK();
+}
+
 Status OrcChunkReader::_init_include_columns() {
     build_column_name_to_id_mapping(&_name_to_column_id, _hive_column_names, _reader->getType(), _case_sensitive);
+
+    std::list<uint64_t> include_column_id;
+    // root column id is add defalut
+    include_column_id.emplace_back(0);
+    for(size_t i = 0; i < _src_slot_descriptors.size(); i++) {
+        SlotDescriptor* desc = _src_slot_descriptors[i];
+        if (desc == nullptr) continue;
+        RETURN_IF_ERROR(_add_include_column_id_by_slot(desc, &include_column_id));
+    }
+    _row_reader_options.includeTypes(include_column_id);
+
+
     std::unordered_map<int, std::string> column_id_to_orc_name;
-    std::list<std::string> orc_column_names;
+    // std::list<std::string> orc_column_names;
 
     const auto& root_type = _reader->getType();
     for (size_t i = 0; i < root_type.getSubtypeCount(); i++) {
@@ -1172,14 +1234,14 @@ Status OrcChunkReader::_init_include_columns() {
         column_id_to_orc_name.emplace(sub_type->getColumnId(), root_type.getFieldName(i));
     }
 
-    for (SlotDescriptor* desc : _src_slot_descriptors) {
-        if (desc == nullptr) continue;
-        std::string orc_column_name;
-        RETURN_IF_ERROR(_slot_to_orc_column_name(desc, column_id_to_orc_name, &orc_column_name));
-        orc_column_names.emplace_back(orc_column_name);
-    }
+    // for (SlotDescriptor* desc : _src_slot_descriptors) {
+    //     if (desc == nullptr) continue;
+    //     std::string orc_column_name;
+    //     RETURN_IF_ERROR(_slot_to_orc_column_name(desc, column_id_to_orc_name, &orc_column_name));
+    //     orc_column_names.emplace_back(orc_column_name);
+    // }
 
-    _row_reader_options.include(orc_column_names);
+    // _row_reader_options.include(orc_column_names);
 
     if (_lazy_load_ctx != nullptr) {
         std::list<std::string> orc_lazy_load_column_names;

@@ -27,6 +27,8 @@ import com.starrocks.thrift.TTypeDesc;
 import com.starrocks.thrift.TTypeNode;
 import com.starrocks.thrift.TTypeNodeType;
 
+import java.util.Arrays;
+
 /**
  * Describes a MAP type. MAP types have a scalar key and an arbitrarily-typed value.
  */
@@ -37,6 +39,7 @@ public class MapType extends Type {
     public MapType(Type keyType, Type valueType) {
         Preconditions.checkNotNull(keyType);
         Preconditions.checkNotNull(valueType);
+        selectedFields = new Boolean[] { false, false };
         this.keyType = keyType;
         this.valueType = valueType;
     }
@@ -47,6 +50,28 @@ public class MapType extends Type {
 
     public Type getValueType() {
         return valueType;
+    }
+
+    @Override
+    public void setSelectedField(int pos, boolean needSetChildren) {
+        if (pos == -1) {
+            Arrays.fill(selectedFields, true);
+        } else {
+            selectedFields[pos] = true;
+        }
+        if (needSetChildren && (pos == 1 || pos == -1)) {
+            if (valueType.isComplexType()) {
+                valueType.selectAll();
+            }
+        }
+    }
+
+    @Override
+    public void selectAll() {
+        Arrays.fill(selectedFields, true);
+        if (valueType.isComplexType()) {
+            valueType.selectAll();
+        }
     }
 
     @Override
@@ -97,8 +122,14 @@ public class MapType extends Type {
         Preconditions.checkNotNull(keyType);
         Preconditions.checkNotNull(valueType);
         node.setType(TTypeNodeType.MAP);
+        node.setSelected_fields(Arrays.asList(selectedFields));
         keyType.toThrift(container);
         valueType.toThrift(container);
+    }
+
+    @Override
+    public MapType clone() {
+        return new MapType(keyType.clone(), valueType.clone());
     }
 }
 
