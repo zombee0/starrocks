@@ -1198,13 +1198,10 @@ Status OrcChunkReader::_add_include_column_id_by_slot(const SlotDescriptor* desc
 Status OrcChunkReader::_add_include_column_id_by_type(const TypeDescriptor& desc, const orc::Type& orc_type,
                                                       std::list<uint64_t>* include_column_id) {
 
-    std::cout << "type: " << desc.type << std::endl;
     for (int i = 0; i < desc.selected_fields.size(); i++) {
         if (desc.selected_fields[i]) {
-            std::cout << "subfield: " << i << std::endl;
             const auto& sub_type = orc_type.getSubtype(i);
             include_column_id->emplace_back(static_cast<int>(sub_type->getColumnId()));
-            std::cout << "orc id: " << sub_type->getColumnId() << std::endl;
             RETURN_IF_ERROR(_add_include_column_id_by_type(desc.children[i], *sub_type, include_column_id));
         }
     }

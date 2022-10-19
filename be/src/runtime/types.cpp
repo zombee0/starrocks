@@ -67,9 +67,6 @@ TypeDescriptor::TypeDescriptor(const std::vector<TTypeNode>& types, int* idx) : 
         DCHECK_LT(*idx, types.size() - 1);
         type = TYPE_ARRAY;
         selected_fields = node.selected_fields;
-        for (int i = 0; i < selected_fields.size(); i++) {
-            std::cout << "array: " << selected_fields[i] << std::endl;
-        }
         ++(*idx);
         children.push_back(TypeDescriptor(types, idx));
         break;
@@ -78,9 +75,6 @@ TypeDescriptor::TypeDescriptor(const std::vector<TTypeNode>& types, int* idx) : 
         DCHECK_LT(*idx, types.size() - 2);
         type = TYPE_MAP;
         selected_fields = node.selected_fields;
-        for (int i = 0; i < selected_fields.size(); i++) {
-            std::cout << "map: " << selected_fields[i] << std::endl;
-        }
         ++(*idx);
         children.push_back(TypeDescriptor(types, idx));
         children.push_back(TypeDescriptor(types, idx));

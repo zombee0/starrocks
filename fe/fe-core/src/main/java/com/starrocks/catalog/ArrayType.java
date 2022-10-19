@@ -103,9 +103,7 @@ public class ArrayType extends Type {
 
     @Override
     public ArrayType clone() {
-        ArrayType clone = (ArrayType) super.clone();
-        clone.itemType = this.itemType.clone();
-        return clone;
+        return new ArrayType(itemType.clone());
     }
 
     @Override

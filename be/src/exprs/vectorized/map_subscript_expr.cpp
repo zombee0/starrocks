@@ -41,40 +41,53 @@ public:
         if (auto* nullable = dynamic_cast<NullableColumn*>(arg0.get()); nullable != nullptr) {
             const uint8_t* nulls = nullable->null_column()->raw_data();
             for (size_t i = 0; i < num_rows; i++) {
-                null_flags[i] |= nulls[i];
+                null_flags[i] = nulls[i];
             }
         }
 
         // construct selection list.
-        std::vector<uint8_t> key_match;
-        starrocks::raw::make_room(&key_match, map_keys->size());
+        std::vector<uint32_t> selection;
+        starrocks::raw::make_room(&selection, num_rows);
 
+        uint32_t idx = 0;
         for (size_t i = 0; i < num_rows; i++) {
-            for (size_t j = offsets[i]; j < offsets[i + 1]; j++) {
-                if (!map_keys->is_null(j) && map_keys->get(j).convert2DatumKey() == arg1->get(i).convert2DatumKey()) {
-                    key_match[j] = 1;
-                } else {
-                    key_match[j] = 0;
-                }
-            }
-        }
-
-        ColumnPtr result = map_values->clone_empty();
-
-        for (size_t i = 0; i < map_column->size(); i++) {
             bool matched = false;
             for (size_t j = offsets[i]; j < offsets[i + 1]; j++) {
-                if (key_match[j]) {
-                    result->append_datum(map_values->get(j));
+                if (!map_keys->is_null(j) && map_keys->get(j).convert2DatumKey() == arg1->get(i).convert2DatumKey()) {
                     matched = true;
+                    selection[i] = j;
+                    idx = j;
                     break;
                 }
             }
             if (!matched) {
-                result->append_default();
+                null_flags[i] = true;
+                selection[i] = idx;
             }
         }
-        return result;
+
+        if (map_values->has_null()) {
+            auto* nullable_values = down_cast<NullableColumn*>(map_values);
+            const uint8_t* nulls = nullable_values->null_column()->raw_data();
+            for (size_t i = 0; i < num_rows; i++) {
+                null_flags[i] |= nulls[selection[i]];
+            }
+        }
+
+        auto* map_values_data = get_data_column(map_values);
+
+        ColumnPtr result = map_values_data->clone_empty();
+        NullColumnPtr result_null = NullColumn::create();
+        result_null->get_data().swap(null_flags);
+
+        if (!map_values_data->empty()) {
+            result->append_selective(*map_values_data, selection.data(), 0, num_rows);
+        } else {
+            result->append_default(num_rows);
+        }
+        DCHECK_EQ(result_null->size(), result->size());
+
+        return NullableColumn::create(std::move(result), std::move(result_null));
     }
 
     Expr* clone(ObjectPool* pool) const override { return pool->add(new MapSubscriptExpr(*this)); }

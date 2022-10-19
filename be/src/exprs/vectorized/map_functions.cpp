@@ -41,9 +41,14 @@ ColumnPtr MapFunctions::map_keys(starrocks_udf::FunctionContext* context, const 
     Column* arg0 = columns[0].get();
 
     auto* col_map = down_cast<MapColumn*>(ColumnHelper::get_data_column(arg0));
-    auto col_result = col_map->keys().clone();
+    auto map_keys = col_map->keys().clone();
+    auto map_keys_array = ArrayColumn::create(std::move(map_keys), UInt32Column::create(col_map->offsets()));
 
-    return ArrayColumn::create(std::move(col_result), UInt32Column::create(col_map->offsets()));
+    if (arg0->has_null()) {
+        return NullableColumn::create(std::move(map_keys_array), down_cast<NullableColumn *>(arg0)->null_column());
+    } else {
+        return map_keys_array;
+    }
 }
 
 ColumnPtr MapFunctions::map_values(starrocks_udf::FunctionContext* context, const Columns& columns) {
@@ -53,9 +58,14 @@ ColumnPtr MapFunctions::map_values(starrocks_udf::FunctionContext* context, cons
     Column* arg0 = columns[0].get();
 
     auto* col_map = down_cast<MapColumn*>(ColumnHelper::get_data_column(arg0));
-    auto col_result = col_map->values().clone();
+    auto map_values = col_map->values().clone();
+    auto map_values_array = ArrayColumn::create(std::move(map_values), UInt32Column::create(col_map->offsets()));
 
-    return ArrayColumn::create(std::move(col_result), UInt32Column::create(col_map->offsets()));
+    if (arg0->has_null()) {
+        return NullableColumn::create(std::move(map_values_array), down_cast<NullableColumn *>(arg0)->null_column());
+    } else {
+        return map_values_array;
+    }
 }
 
 } // namespace starrocks::vectorized
