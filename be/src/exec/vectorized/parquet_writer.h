@@ -14,62 +14,30 @@
 
 #pragma once
 
-#include <arrow/api.h>
-#include <arrow/io/api.h>
-#include <parquet/api/writer.h>
-#include <parquet/arrow/writer.h>
+#include "formats/parquet/file_writer.h"
+#include "fs/fs.h"
 
 namespace starrocks::vectorized {
 
-    class ParquetOutputStream : public arrow::io::OutputSream {
-    public:
-        ParquetOutputStream(std::shared_ptr<starrocks::WritableFile> wfile);
-        ~ParquetOutputStream() override;
+class TableInfo;
+class PartitionInfo;
 
-        arrow::Status Write(const void *data, int64_t nbytes) override;
-        arrow::Status Write(const std::shared_ptr<Buffer> &data) override;
-        arrow::Status Flush() override;
-        arrow::Status Close() override;
-        arrow::Result<int64_t> Tell() const override;
-        bool closed() const override;
+class ParquetWriterWrap {
+public:
+    ParquetWriterWrap(TableInfo tableInfo, PartitionInfo partitionInfo);
+    ~ParquetWriterWrap();
 
-    private:
-        std::shared_ptr<starrocks::WritableFile> _wfile;
-    };
+    std::string get_new_file_name();
 
-    class ParquetWriterWrap {
-    public:
-        ParquetWriterWrap(std::shared_ptr<arrow::io::WritableFile>&& parquet_file);
-        ~ParquetWriterWrap();
+    Status init_parquet_writer(); // init filesystem, init writeproperties,
+    Status append_chunk(vectorized::Chunk* chunk); //check if we need a new file, file_writer->write
+    void close();
 
-        void close();
-        Status init_parquet_writer(const std::vector<SlotDescriptor*>& tuple_slot_descs, const std::string& timezone);
-        Status write(const arrow::RecordBatch&);
+private:
+    std::shared_ptr<FileSystem> _fs;
+    std::unique_ptr<starrocks::parquet::FileWriter> _writer;
 
-    private:
-        parquet::RowGroupWriter* get_row_group_writer();
-
-        std::shared_ptr<ParquetOutputStream> _output_stream;
-        std::shared_ptr<parquet::WriterProperties> _writer_properties;
-        std::unique_ptr<parquet::arrow::FileWriter> _writer;
-
-        // parquet file reader object
-        std::shared_ptr<::arrow::RecordBatchReader> _rb_batch;
-        std::shared_ptr<arrow::RecordBatch> _batch;
-        std::shared_ptr<parquet::FileMetaData> _file_metadata;
-
-        // For nested column type, it's consisting of multiple physical-columns
-        std::map<std::string, std::vector<int>> _map_column_nested;
-        std::vector<int> _parquet_column_ids;
-        int _total_groups; // groups in a parquet file
-        int _current_group;
-
-        int _rows_of_group; // rows in a group.
-        int _current_line_of_group;
-        int _current_line_of_batch;
-
-        int64_t _read_offset;
-        int64_t _read_size;
+    std::string _current_file = nullptr;
     };
 
 } // namespace starrocks::vectorized
