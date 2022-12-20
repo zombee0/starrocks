@@ -15,50 +15,62 @@
 #pragma once
 
 #include <arrow/api.h>
+#include <arrow/buffer.h>
 #include <arrow/io/api.h>
+#include <arrow/io/file.h>
+#include <arrow/io/interfaces.h>
+#include <parquet/api/reader.h>
 #include <parquet/api/writer.h>
+#include <parquet/arrow/reader.h>
 #include <parquet/arrow/writer.h>
+#include <parquet/exception.h>
 
-#include <memory>
-
+#include "column/chunk.h"
 #include "fs/fs.h"
 
 namespace starrocks::parquet {
 
-class ParquetOutputStream : public arrow::io::OutputSream {
+class ParquetOutputStream : public arrow::io::OutputStream {
 public:
     ParquetOutputStream(std::shared_ptr<starrocks::WritableFile> wfile);
     ~ParquetOutputStream() override;
 
     arrow::Status Write(const void *data, int64_t nbytes) override;
-    arrow::Status Write(const std::shared_ptr<Buffer> &data) override;
+    arrow::Status Write(const std::shared_ptr<arrow::Buffer> &data) override;
     arrow::Status Close() override;
     arrow::Result<int64_t> Tell() const override;
     bool closed() const override { return _is_closed; };
+    int64_t get_written_len() const;
 
 private:
     std::shared_ptr<starrocks::WritableFile> _wfile;
     int64_t _cur_pos = 0;
-    int64_t _written_len = 0;
     bool _is_closed = false;
 };
 
 class FileWriter {
 public:
-    FileWriter(std::unique_ptr<WritableFile> writable_file, std::shared_ptr<parquet::WriterProperties> properties,
-               std::shared_ptr<parquet::schema::GroupNode> schema);
+    FileWriter(std::shared_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
+               std::shared_ptr<::parquet::schema::GroupNode> schema);
     ~FileWriter() = default;
 
     Status init();
     Status write(vectorized::Chunk* chunk);
-    void close();
-    int64_t writen_len();
+    Status close();
+    std::shared_ptr<::parquet::FileMetaData> metadata() const { return _file_metadata; }
+    int64_t get_written_bytes() const;
+
 private:
+    ::parquet::RowGroupWriter* get_rg_writer();
+
     std::shared_ptr<ParquetOutputStream> _outstream;
-    std::shared_ptr<parquet::WriterProperties> _properties;
-    std::shared_ptr<parquet::schema::GroupNode> _schema;
-    std::unique_ptr<parquet::ParquetFileWriter> _writer;
-    parquet::RowGroupWriter* _rg_writer;
+    std::shared_ptr<::parquet::WriterProperties> _properties;
+    std::shared_ptr<::parquet::schema::GroupNode> _schema;
+    std::unique_ptr<::parquet::ParquetFileWriter> _writer;
+    ::parquet::RowGroupWriter* _rg_writer = nullptr;
+    int64_t _cur_written_rows;
+    int64_t _max_row_group_size = 128 * 1024 * 1024;
+    std::shared_ptr<::parquet::FileMetaData> _file_metadata;
 };
 
 } // namespace starrocks::parquet

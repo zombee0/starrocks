@@ -80,6 +80,7 @@ set(EXEC_FILES
     vectorized/arrow_to_json_converter.cpp
     vectorized/parquet_scanner.cpp
     vectorized/parquet_reader.cpp
+    vectorized/parquet_writer.cpp
     vectorized/file_scan_node.cpp
     vectorized/assert_num_rows_node.cpp
     vectorized/intersect_hash_set.cpp
@@ -161,6 +162,7 @@ set(EXEC_FILES
     pipeline/sink/export_sink_operator.cpp
     pipeline/sink/mysql_table_sink_operator.cpp
     pipeline/sink/memory_scratch_sink_operator.cpp
+    pipeline/sink/table_sink_operator.cpp
     pipeline/select_operator.cpp
     pipeline/nljoin/nljoin_context.cpp
     pipeline/nljoin/nljoin_build_operator.cpp
