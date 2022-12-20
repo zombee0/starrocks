@@ -55,6 +55,7 @@ public:
     Status init_parquet_writer(const TableInfo* tableInfo, const PartitionInfo* partitionInfo);
     Status append_chunk(vectorized::Chunk* chunk); //check if we need a new file, file_writer->write
     Status close();
+    bool writable() { return _writer->writable(); }
 
 private:
     std::string get_new_file_name();
