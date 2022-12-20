@@ -118,7 +118,7 @@ void FlushToken::_flush_memtable(vectorized::MemTable* memtable, SegmentPB* segm
 
     MonotonicStopWatch timer;
     timer.start();
-    set_status(memtable->flush(segment));
+    set_status(memtable-(segment));
     _stats.flush_time_ns += timer.elapsed_time();
     _stats.flush_count++;
     _stats.flush_size_bytes += memtable->memory_usage();

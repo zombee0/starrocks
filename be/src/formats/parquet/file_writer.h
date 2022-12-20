@@ -71,6 +71,8 @@ private:
     int64_t _cur_written_rows;
     int64_t _max_row_group_size = 128 * 1024 * 1024;
     std::shared_ptr<::parquet::FileMetaData> _file_metadata;
+    std::atomic<bool> _rg_writer_closing = false;
+    std::atomic<bool> _closed = false;
 };
 
 } // namespace starrocks::parquet

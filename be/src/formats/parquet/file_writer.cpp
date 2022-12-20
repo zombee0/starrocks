@@ -15,6 +15,7 @@
 #include "column/column_helper.h"
 #include "formats/parquet/file_writer.h"
 #include "util/slice.h"
+#include "runtime/exec_env.h"
 
 namespace starrocks::parquet {
 
@@ -72,14 +73,22 @@ FileWriter::FileWriter(std::shared_ptr<WritableFile> writable_file, std::shared_
 ::parquet::RowGroupWriter* FileWriter::get_rg_writer() {
     if (_rg_writer == nullptr) {
         _rg_writer = _writer->AppendBufferedRowGroup();
-    }
-    if (_rg_writer->total_bytes_written() > _max_row_group_size) {
-        // TODO: we need async close _rg_writer
-        _rg_writer->Close();
-        // appendBufferedRowGroup will check and close current _rg_writer
-        _rg_writer = _writer->AppendBufferedRowGroup();
         _cur_written_rows = 0;
     }
+    //if (_rg_writer->total_bytes_written() > _max_row_group_size) {
+    //    // TODO: we need async close _rg_writer
+    //    _rg_writer_closing.store(true);
+    //
+    //
+    //    [&_rg_writer] {
+    //
+    //    }
+    //    _rg_writer->Close();
+    //    []
+    //    // appendBufferedRowGroup will check and close current _rg_writer
+    //    _rg_writer = _writer->AppendBufferedRowGroup();
+    //    _cur_written_rows = 0;
+    //}
     return _rg_writer;
 }
 
@@ -146,6 +155,14 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
         }
     }
     _cur_written_rows += num_rows;
+    if (_rg_writer->total_bytes_written() > _max_row_group_size) {
+        _rg_writer_closing.store(true);
+        ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+            _rg_writer->Close();
+            _rg_writer = nullptr;
+            _rg_writer_closing.store(false);
+        });
+    }
     return Status::OK();
 }
 
