@@ -60,6 +60,7 @@ public:
     std::shared_ptr<::parquet::FileMetaData> metadata() const { return _file_metadata; }
     int64_t get_written_bytes() const;
     bool writable() { return !(_rg_writer_closing.load()); }
+    bool closed() { return _closed.load(); }
 
 private:
     ::parquet::RowGroupWriter* get_rg_writer();

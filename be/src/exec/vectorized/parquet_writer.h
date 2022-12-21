@@ -55,7 +55,8 @@ public:
     Status init_parquet_writer(const TableInfo* tableInfo, const PartitionInfo* partitionInfo);
     Status append_chunk(vectorized::Chunk* chunk); //check if we need a new file, file_writer->write
     Status close();
-    bool writable() { return _writer->writable(); }
+    bool writable() { return _writer == nullptr || _writer->writable(); }
+    bool closed();
 
 private:
     std::string get_new_file_name();
@@ -69,6 +70,7 @@ private:
     std::shared_ptr<::parquet::schema::GroupNode> _schema;
     std::string _current_file = nullptr;
     std::vector<std::shared_ptr<::parquet::FileMetaData>> _metadatas;
+    std::vector<std::shared_ptr<starrocks::parquet::FileWriter>> _pending_commits;
     int64_t _max_file_size = 1024 * 1024 * 1024;
 };
 

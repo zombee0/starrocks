@@ -14,6 +14,8 @@
 
 
 #include "exec/vectorized/parquet_writer.h"
+#include "runtime/exec_env.h"
+#include "util/priority_thread_pool.hpp"
 
 namespace starrocks::vectorized {
 
@@ -70,21 +72,26 @@ Status ParquetWriterWrap::append_chunk(vectorized::Chunk* chunk) {
     }
     // exceed file size
     if (_writer->get_written_bytes() > _max_file_size) {
-        close_current_writer();
-        new_file_writer();
+        auto st = close_current_writer();
+        if (st.ok()) {
+            new_file_writer();
+        }
     }
     auto st = _writer->write(chunk);
     return st;
 }
 
 Status ParquetWriterWrap::close_current_writer() {
-    auto st = _writer->close();
-    if (!st.ok())
-    {
-        return st;
+    bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+                _writer->close();
+                });
+    if (ret) {
+        _pending_commits.emplace_back(_writer);
+        return Status::OK();
+    } else {
+        return Status::IOError("submit close file error!");
     }
-    _metadatas.emplace_back(_writer->metadata());
-    return Status::OK();
+
 }
 
 Status ParquetWriterWrap::close() {
@@ -94,8 +101,20 @@ Status ParquetWriterWrap::close() {
             return st;
         }
     }
-    _writer.reset();
     return Status::OK();
+}
+
+bool ParquetWriterWrap::closed() {
+    for (auto& writer : _pending_commits) {
+        if (writer != nullptr && writer->closed()) {
+            _metadatas.emplace_back(writer->metadata());
+            writer = nullptr;
+        }
+        if (writer != nullptr && (!writer->closed())) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // starrocks::vectorized

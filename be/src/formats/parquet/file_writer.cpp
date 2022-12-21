@@ -15,6 +15,7 @@
 #include "column/column_helper.h"
 #include "formats/parquet/file_writer.h"
 #include "util/slice.h"
+#include "util/priority_thread_pool.hpp"
 #include "runtime/exec_env.h"
 
 namespace starrocks::parquet {
@@ -157,11 +158,14 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
     _cur_written_rows += num_rows;
     if (_rg_writer->total_bytes_written() > _max_row_group_size) {
         _rg_writer_closing.store(true);
-        ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
-            _rg_writer->Close();
-            _rg_writer = nullptr;
+        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+                    _rg_writer->Close();
+                    _rg_writer = nullptr;
+                    _rg_writer_closing.store(false);
+                    });
+        if (!ret) {
             _rg_writer_closing.store(false);
-        });
+        }
     }
     return Status::OK();
 }
@@ -186,6 +190,7 @@ Status FileWriter::close() {
     if (st != ::arrow::Status::OK()) {
         return Status::InternalError("Close file failed!");
     }
+    _closed.store(true);
     return Status::OK();
 }
 
