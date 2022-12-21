@@ -29,6 +29,10 @@ Status ParquetWriterWrap::init_parquet_writer(const TableInfo* tableInfo, const 
     // ::parquet::Repetition::type rep_type;
     // ::parquet::Type::type data_type;
 
+    //
+    // location, schema, format, compress, dirctory default = enable,
+    // partitionInfo:  column(FE) and chunk -> columnValue filepath
+    // iceberg rolling file name
     return Status::OK();
 }
 
