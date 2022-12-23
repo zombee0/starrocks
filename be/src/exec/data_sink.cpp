@@ -37,6 +37,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <runtime/iceberg_table_sink.h>
 
 #include "common/logging.h"
 #include "exec/exec_node.h"
@@ -49,6 +50,7 @@
 #include "runtime/memory_scratch_sink.h"
 #include "runtime/multi_cast_data_stream_sink.h"
 #include "runtime/mysql_table_sink.h"
+#include "runtime/iceberg_table_sink.h"
 #include "runtime/result_sink.h"
 #include "runtime/runtime_state.h"
 
@@ -104,6 +106,14 @@ Status DataSink::create_data_sink(RuntimeState* state, const TDataSink& thrift_s
         }
         // TODO: figure out good buffer size based on size of output row
         *sink = std::make_unique<MysqlTableSink>(state->obj_pool(), row_desc, output_exprs);
+        break;
+    }
+
+    case TDataSinkType::ICEBERG_TABLE_SINK: {
+        if (!thrift_sink.__isset.iceberg_table_sink) {
+            return Status::InternalError("Missing data buffer sink");
+        }
+        *sink = std::make_unique<IcebergTableSink>(state->obj_pool(), row_desc, output_exprs);
         break;
     }
 

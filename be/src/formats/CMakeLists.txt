@@ -50,7 +50,8 @@ add_library(Formats STATIC
         parquet/metadata.cpp
         parquet/group_reader.cpp
         parquet/file_reader.cpp
-        )
+        parquet/file_writer.cpp
+        parquet/file_writer.cpp parquet/file_writer.h)
 
 # simdjson Runtime Implement Dispatch: https://github.com/simdjson/simdjson/blob/master/doc/implementation-selection.md#runtime-cpu-detection
 # Unset architecture-specific flags to avoid breaking implement runtime dispatch.

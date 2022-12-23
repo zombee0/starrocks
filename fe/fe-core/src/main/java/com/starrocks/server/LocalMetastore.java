@@ -757,7 +757,7 @@ public class LocalMetastore implements ConnectorMetadata {
         String tableName = stmt.getTableName();
 
         // check if db exists
-        Database db = getDb(stmt.getDbName());
+        Database db = GlobalStateMgr.getCurrentState().getMetadataMgr().getDb(stmt.getCatalogName(), stmt.getDbName());
         if (db == null) {
             ErrorReport.reportDdlException(ErrorCode.ERR_BAD_DB_ERROR, dbName);
         }
@@ -770,20 +770,20 @@ public class LocalMetastore implements ConnectorMetadata {
             db.checkQuota();
         }
 
-        // check if table exists in db
-        db.readLock();
-        try {
-            if (db.getTable(tableName) != null) {
-                if (stmt.isSetIfNotExists()) {
-                    LOG.info("create table[{}] which already exists", tableName);
-                    return;
-                } else {
-                    ErrorReport.reportDdlException(ErrorCode.ERR_TABLE_EXISTS_ERROR, tableName);
-                }
-            }
-        } finally {
-            db.readUnlock();
-        }
+//        // check if table exists in db
+//        db.readLock();
+//        try {
+//            if (GlobalStateMgr.getCurrentState().getMetadataMgr().getTable(stmt.getCatalogName(), stmt.getDbName(), stmt.getTableName()) != null) {
+//                if (stmt.isSetIfNotExists()) {
+//                    LOG.info("create table[{}] which already exists", tableName);
+//                    return;
+//                } else {
+//                    ErrorReport.reportDdlException(ErrorCode.ERR_TABLE_EXISTS_ERROR, tableName);
+//                }
+//            }
+//        } finally {
+//            db.readUnlock();
+//        }
 
         if (stmt.isOlapOrLakeEngine()) {
             createOlapOrLakeTable(db, stmt);
@@ -2514,6 +2514,13 @@ public class LocalMetastore implements ConnectorMetadata {
     private void createIcebergTable(Database db, CreateTableStmt stmt) throws DdlException {
         String tableName = stmt.getTableName();
         List<Column> columns = stmt.getColumns();
+
+        String catalogName = stmt.getCatalogName();
+        if (!CatalogMgr.isInternalCatalog(catalogName)) {
+            GlobalStateMgr.getCurrentState().getMetadataMgr().createTable(catalogName, stmt);
+            return;
+        }
+
         long tableId = getNextId();
         IcebergTable icebergTable = new IcebergTable(tableId, tableName, columns, stmt.getProperties());
         if (!Strings.isNullOrEmpty(stmt.getComment())) {

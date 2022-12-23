@@ -81,7 +81,9 @@ public:
     }
 
     int num_drivers() const { return _num_drivers.load(); }
-    bool count_down_drivers() { return _num_drivers.fetch_sub(1) == 1; }
+    bool count_down_drivers() {
+
+        return _num_drivers.fetch_sub(1) == 1; }
 
     void set_final_status(const Status& status);
 

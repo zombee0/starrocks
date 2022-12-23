@@ -69,7 +69,7 @@ public class MetaUtils {
     }
 
     public static Database getDatabase(ConnectContext session, TableName tableName) {
-        Database db = session.getGlobalStateMgr().getDb(tableName.getDb());
+        Database db = session.getGlobalStateMgr().getMetadataMgr().getDb(tableName.getCatalog(), tableName.getDb());
         if (db == null) {
             throw new SemanticException("Database %s is not found", tableName.getDb());
         }
@@ -89,11 +89,12 @@ public class MetaUtils {
     }
 
     public static Table getTable(ConnectContext session, TableName tableName) {
-        Database db = session.getGlobalStateMgr().getDb(tableName.getDb());
-        if (db == null) {
-            throw new SemanticException("Database %s is not found", tableName.getDb());
-        }
-        Table table = db.getTable(tableName.getTbl());
+//        Database db = session.getGlobalStateMgr().getDb(tableName.getDb());
+//        if (db == null) {
+//            throw new SemanticException("Database %s is not found", tableName.getDb());
+//        }
+        Table table = session.getGlobalStateMgr().getMetadataMgr().getTable(
+                tableName.getCatalog(), tableName.getDb(), tableName.getTbl());
         if (table == null) {
             throw new SemanticException("Table %s is not found", tableName.getTbl());
         }

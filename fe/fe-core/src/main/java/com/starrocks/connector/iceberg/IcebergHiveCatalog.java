@@ -23,6 +23,7 @@ import com.starrocks.connector.iceberg.hive.CachedClientPool;
 import com.starrocks.connector.iceberg.hive.HiveTableOperations;
 import com.starrocks.connector.iceberg.io.IcebergCachingFileIO;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.iceberg.BaseMetastoreCatalog;
@@ -30,8 +31,12 @@ import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.CatalogUtil;
 import org.apache.iceberg.ClientPool;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.TableMetadata;
 import org.apache.iceberg.TableOperations;
+import org.apache.iceberg.Transaction;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.iceberg.hadoop.HadoopFileIO;
@@ -42,12 +47,16 @@ import org.apache.logging.log4j.Logger;
 import org.apache.thrift.TException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static com.starrocks.connector.iceberg.IcebergUtil.convertToSRDatabase;
+import static org.apache.iceberg.TableMetadata.newTableMetadata;
+import static org.apache.iceberg.Transactions.createTableTransaction;
 
 public class IcebergHiveCatalog extends BaseMetastoreCatalog implements IcebergCatalog {
     private static final Logger LOG = LogManager.getLogger(IcebergHiveCatalog.class);
@@ -198,5 +207,33 @@ public class IcebergHiveCatalog extends BaseMetastoreCatalog implements IcebergC
                 .add("name", name)
                 .add("uri", this.conf == null ? "" : this.conf.get(HiveConf.ConfVars.METASTOREURIS.varname))
                 .toString();
+    }
+
+    @Override
+    public Path defaultTableLocation(String dbName, String tblName) {
+        try {
+            String location = clients.run(client -> client.getDatabase(dbName)).getLocationUri();
+            location = location.endsWith("/") ? location : location + "/";
+            Path databasePath = new Path(location);
+            return new Path(databasePath, tblName);
+        } catch (TException e) {
+            e.printStackTrace();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public Transaction newCreateTableTransaction(
+            String dbName,
+            String tblName,
+            Schema schema,
+            PartitionSpec partitionSpec,
+            String location,
+            Map<String, String> properties) {
+        TableMetadata metadata = newTableMetadata(schema, partitionSpec, location, properties == null ? new HashMap<>(): properties);
+        TableOperations ops = newTableOps(TableIdentifier.of(Namespace.of(dbName), tblName));
+        return createTableTransaction(tblName, ops, metadata);
     }
 }

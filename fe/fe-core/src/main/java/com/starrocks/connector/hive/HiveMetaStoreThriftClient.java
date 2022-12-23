@@ -37,6 +37,7 @@ package com.starrocks.connector.hive;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hive.common.ValidTxnList;
 import org.apache.hadoop.hive.common.ValidWriteIdList;
+import org.apache.hadoop.hive.metastore.HiveMetaHook;
 import org.apache.hadoop.hive.metastore.HiveMetaHookLoader;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.hadoop.hive.metastore.PartitionDropOptions;
@@ -129,6 +130,7 @@ import org.apache.hadoop.hive.metastore.api.UniqueConstraintsRequest;
 import org.apache.hadoop.hive.metastore.api.UnknownDBException;
 import org.apache.hadoop.hive.metastore.api.UnknownPartitionException;
 import org.apache.hadoop.hive.metastore.api.UnknownTableException;
+import org.apache.hadoop.hive.metastore.api.UnlockRequest;
 import org.apache.hadoop.hive.metastore.api.WMFullResourcePlan;
 import org.apache.hadoop.hive.metastore.api.WMMapping;
 import org.apache.hadoop.hive.metastore.api.WMNullablePool;
@@ -177,6 +179,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.apache.hadoop.hive.metastore.utils.MetaStoreUtils.getDefaultCatalog;
+import static org.apache.hadoop.hive.metastore.utils.MetaStoreUtils.prependCatalogToDbName;
 
 /**
  * Modified from apache hive  org.apache.hadoop.hive.metastore.HiveMetaStoreClient.java
@@ -1217,10 +1220,100 @@ public class HiveMetaStoreThriftClient implements IMetaStoreClient, AutoCloseabl
     }
 
     @Override
-    public void createTable(Table tbl)
-            throws AlreadyExistsException, InvalidObjectException, MetaException, NoSuchObjectException, TException {
-        throw new TException("method not implemented");
+    public void createTable(Table tbl) throws AlreadyExistsException,
+            InvalidObjectException, MetaException, NoSuchObjectException, TException {
+        createTable(tbl, null);
+    }
 
+    private HiveMetaHook getHook(Table tbl) throws MetaException {
+        return null;
+    }
+
+    protected void create_table_with_environment_context(Table tbl, EnvironmentContext envContext)
+            throws AlreadyExistsException, InvalidObjectException,
+            MetaException, NoSuchObjectException, TException {
+        client.create_table_with_environment_context(tbl, envContext);
+    }
+
+    public void createTable(Table tbl, EnvironmentContext envContext) throws AlreadyExistsException,
+            InvalidObjectException, MetaException, NoSuchObjectException, TException {
+        if (!tbl.isSetCatName()) {
+            tbl.setCatName(getDefaultCatalog(conf));
+        }
+        HiveMetaHook hook = getHook(tbl);
+        if (hook != null) {
+            hook.preCreateTable(tbl);
+        }
+        boolean success = false;
+        try {
+            // Subclasses can override this step (for example, for temporary tables)
+            create_table_with_environment_context(tbl, envContext);
+            if (hook != null) {
+                hook.commitCreateTable(tbl);
+            }
+            success = true;
+        }
+        finally {
+            if (!success && (hook != null)) {
+                try {
+                    hook.rollbackCreateTable(tbl);
+                } catch (Exception e){
+                    LOG.error("Create rollback failed with", e);
+                }
+            }
+        }
+    }
+
+    @Override
+    public void createTableWithConstraints(Table tbl,
+                                           List<SQLPrimaryKey> primaryKeys, List<SQLForeignKey> foreignKeys,
+                                           List<SQLUniqueConstraint> uniqueConstraints,
+                                           List<SQLNotNullConstraint> notNullConstraints,
+                                           List<SQLDefaultConstraint> defaultConstraints,
+                                           List<SQLCheckConstraint> checkConstraints)
+            throws AlreadyExistsException, InvalidObjectException,
+            MetaException, NoSuchObjectException, TException {
+
+        if (!tbl.isSetCatName()) {
+            String defaultCat = getDefaultCatalog(conf);
+            tbl.setCatName(defaultCat);
+            if (primaryKeys != null) {
+                primaryKeys.forEach(pk -> pk.setCatName(defaultCat));
+            }
+            if (foreignKeys != null) {
+                foreignKeys.forEach(fk -> fk.setCatName(defaultCat));
+            }
+            if (uniqueConstraints != null) {
+                uniqueConstraints.forEach(uc -> uc.setCatName(defaultCat));
+            }
+            if (notNullConstraints != null) {
+                notNullConstraints.forEach(nn -> nn.setCatName(defaultCat));
+            }
+            if (defaultConstraints != null) {
+                defaultConstraints.forEach(def -> def.setCatName(defaultCat));
+            }
+            if (checkConstraints != null) {
+                checkConstraints.forEach(cc -> cc.setCatName(defaultCat));
+            }
+        }
+        HiveMetaHook hook = getHook(tbl);
+        if (hook != null) {
+            hook.preCreateTable(tbl);
+        }
+        boolean success = false;
+        try {
+            // Subclasses can override this step (for example, for temporary tables)
+            client.create_table_with_constraints(tbl, primaryKeys, foreignKeys,
+                    uniqueConstraints, notNullConstraints, defaultConstraints, checkConstraints);
+            if (hook != null) {
+                hook.commitCreateTable(tbl);
+            }
+            success = true;
+        } finally {
+            if (!success && (hook != null)) {
+                hook.rollbackCreateTable(tbl);
+            }
+        }
     }
 
     @Override
@@ -1253,7 +1346,12 @@ public class HiveMetaStoreThriftClient implements IMetaStoreClient, AutoCloseabl
     public void alter_table_with_environmentContext(String databaseName, String tblName, Table table,
                                                     EnvironmentContext environmentContext)
             throws InvalidOperationException, MetaException, TException {
-        throw new TException("method not implemented");
+        HiveMetaHook hook = getHook(table);
+        if (hook != null) {
+            hook.preAlterTable(table, environmentContext);
+        }
+        client.alter_table_with_environment_context(prependCatalogToDbName(databaseName, conf),
+                tblName, table, environmentContext);
     }
 
     @Override
@@ -1819,9 +1917,11 @@ public class HiveMetaStoreThriftClient implements IMetaStoreClient, AutoCloseabl
     }
 
     @Override
-    public LockResponse lock(LockRequest request) throws NoSuchTxnException, TxnAbortedException, TException {
-        throw new TException("method not implemented");
+    public LockResponse lock(LockRequest request)
+            throws NoSuchTxnException, TxnAbortedException, TException {
+        return client.lock(request);
     }
+
 
     @Override
     public LockResponse checkLock(long lockid)
@@ -1830,9 +1930,9 @@ public class HiveMetaStoreThriftClient implements IMetaStoreClient, AutoCloseabl
     }
 
     @Override
-    public void unlock(long lockid) throws NoSuchLockException, TxnOpenException, TException {
-        throw new TException("method not implemented");
-
+    public void unlock(long lockid)
+            throws NoSuchLockException, TxnOpenException, TException {
+        client.unlock(new UnlockRequest(lockid));
     }
 
     @Override
@@ -2015,17 +2115,6 @@ public class HiveMetaStoreThriftClient implements IMetaStoreClient, AutoCloseabl
     public List<SQLCheckConstraint> getCheckConstraints(CheckConstraintsRequest request)
             throws MetaException, NoSuchObjectException, TException {
         throw new TException("method not implemented");
-    }
-
-    @Override
-    public void createTableWithConstraints(Table tTbl, List<SQLPrimaryKey> primaryKeys, List<SQLForeignKey> foreignKeys,
-                                           List<SQLUniqueConstraint> uniqueConstraints,
-                                           List<SQLNotNullConstraint> notNullConstraints,
-                                           List<SQLDefaultConstraint> defaultConstraints,
-                                           List<SQLCheckConstraint> checkConstraints)
-            throws AlreadyExistsException, InvalidObjectException, MetaException, NoSuchObjectException, TException {
-        throw new TException("method not implemented");
-
     }
 
     @Override

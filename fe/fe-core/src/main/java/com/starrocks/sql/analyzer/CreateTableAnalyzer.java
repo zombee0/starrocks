@@ -309,7 +309,7 @@ public class CreateTableAnalyzer {
             if (engineName.equals(ELASTICSEARCH)) {
                 EsUtil.analyzePartitionAndDistributionDesc(partitionDesc, distributionDesc);
             } else {
-                if (partitionDesc != null || distributionDesc != null) {
+                if (distributionDesc != null) {
                     throw new SemanticException("Create %s table should not contain partition or distribution desc",
                             engineName);
                 }

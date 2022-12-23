@@ -17,7 +17,11 @@ package com.starrocks.connector.iceberg;
 
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.IcebergTable;
+import org.apache.hadoop.fs.Path;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
+import org.apache.iceberg.Transaction;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
 import org.apache.thrift.TException;
@@ -62,4 +66,14 @@ public interface IcebergCatalog {
     Database getDB(String dbName) throws InterruptedException, TException;
 
     List<TableIdentifier> listTables(Namespace of);
+
+    Path defaultTableLocation(String dbName, String tblName);
+
+    Transaction newCreateTableTransaction(
+            String dbName,
+            String tblName,
+            Schema schema,
+            PartitionSpec partitionSpec,
+            String location,
+            Map<String, String> properties);
 }

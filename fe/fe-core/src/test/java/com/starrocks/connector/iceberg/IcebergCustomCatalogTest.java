@@ -32,6 +32,7 @@ import mockit.MockUp;
 import mockit.Mocked;
 import mockit.Tested;
 import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.metastore.IMetaStoreClient;
 import org.apache.iceberg.BaseMetastoreCatalog;
@@ -39,8 +40,11 @@ import org.apache.iceberg.BaseTable;
 import org.apache.iceberg.CatalogProperties;
 import org.apache.iceberg.CatalogUtil;
 import org.apache.iceberg.ClientPool;
+import org.apache.iceberg.PartitionSpec;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Table;
 import org.apache.iceberg.TableOperations;
+import org.apache.iceberg.Transaction;
 import org.apache.iceberg.catalog.Catalog;
 import org.apache.iceberg.catalog.Namespace;
 import org.apache.iceberg.catalog.TableIdentifier;
@@ -250,6 +254,16 @@ public class IcebergCustomCatalogTest {
             } catch (TException | InterruptedException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        @Override
+        public Path defaultTableLocation(String dbName, String tblName) {
+            return null;
+        }
+
+        @Override
+        public Transaction newCreateTableTransaction(String dbName, String tblName, Schema schema, PartitionSpec partitionSpec, String location, Map<String, String> properties) {
+            return null;
         }
 
         @Override

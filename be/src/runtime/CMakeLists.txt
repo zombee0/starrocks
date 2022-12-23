@@ -90,7 +90,7 @@ set(RUNTIME_FILES
 set(RUNTIME_FILES ${RUNTIME_FILES}
     mysql_table_writer.cpp
     mysql_table_sink.cpp
-)
+    iceberg_table_sink.cpp)
 
 add_library(Runtime STATIC
     ${RUNTIME_FILES}

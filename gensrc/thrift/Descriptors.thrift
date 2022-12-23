@@ -38,6 +38,30 @@ namespace java com.starrocks.thrift
 include "Types.thrift"
 include "Exprs.thrift"
 
+enum TParquetDataType {
+    BOOLEAN,
+    INT32,
+    INT64,
+    INT96,
+    BYTE_ARRAY,
+    FLOAT,
+    DOUBLE,
+    FIXED_LEN_BYTE_ARRAY,
+}
+
+enum TParquetRepetitionType {
+    REQUIRED,
+    REPEATED,
+    OPTIONAL,
+}
+
+struct TParquetSchema {
+    1: optional TParquetRepetitionType schema_repetition_type
+    2: optional TParquetDataType schema_data_type
+    3: optional string schema_column_name
+    4: optional i32 field_id
+}
+
 struct TSlotDescriptor {
   1: required Types.TSlotId id
   2: required Types.TTupleId parent
@@ -172,7 +196,7 @@ struct TColumn {
     // For fixed-length column, this value may be ignored by BE when creating a tablet.
     20: optional i32 index_len                 
     // column type. If this field is set, the |column_type| will be ignored.
-    21: optional Types.TTypeDesc type_desc         
+    21: optional Types.TTypeDesc type_desc
 }
 
 struct TOlapTableIndexTablets {
@@ -341,6 +365,14 @@ struct TIcebergTable {
 
     // Schema columns, except partition columns
     2: optional list<TColumn> columns
+
+    3: optional list<TColumn> partition_columns
+
+}
+
+struct TIcebergPartitionColumn {
+    1: required i32 id
+    2: required string name
 }
 
 struct THudiTable {

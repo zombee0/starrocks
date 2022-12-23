@@ -77,6 +77,7 @@ import com.starrocks.thrift.TCompressionType;
 import com.starrocks.thrift.TDescriptorTable;
 import com.starrocks.thrift.TExecBatchPlanFragmentsParams;
 import com.starrocks.thrift.TExecPlanFragmentParams;
+import com.starrocks.thrift.TIcebergDataFile;
 import com.starrocks.thrift.TLoadJobType;
 import com.starrocks.thrift.TNetworkAddress;
 import com.starrocks.thrift.TPipelineProfileLevel;
@@ -168,6 +169,7 @@ public class Coordinator {
     private List<String> exportFiles;
     private final List<TTabletCommitInfo> commitInfos = Lists.newArrayList();
     private final List<TTabletFailInfo> failInfos = Lists.newArrayList();
+    private final List<TIcebergDataFile> dataFiles = Lists.newArrayList();
     // Input parameter
     private long jobId = -1; // job which this task belongs to
     private TUniqueId queryId;
@@ -398,6 +400,10 @@ public class Coordinator {
 
     public List<TTabletFailInfo> getFailInfos() {
         return failInfos;
+    }
+
+    public List<TIcebergDataFile> getIcebergDataFiles() {
+        return dataFiles;
     }
 
     public boolean isUsingBackend(Long backendID) {
@@ -1427,6 +1433,9 @@ public class Coordinator {
             }
             if (params.isSetFailInfos()) {
                 updateFailInfos(params.getFailInfos());
+            }
+            if (params.isSetIceberg_commit_infos()) {
+                dataFiles.addAll(params.iceberg_commit_infos);
             }
             profileDoneSignal.markedCountDown(params.getFragment_instance_id(), -1L);
         }

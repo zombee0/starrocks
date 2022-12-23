@@ -50,6 +50,7 @@ enum TDataSinkType {
     OLAP_TABLE_SINK,
     MEMORY_SCRATCH_SINK,
     MULTI_CAST_DATA_STREAM_SINK,
+    ICEBERG_TABLE_SINK
 }
 
 enum TResultSinkType {
@@ -184,6 +185,15 @@ struct TOlapTableSink {
     20: optional string merge_condition
 }
 
+struct TIcebergTableSink {
+    1: required string location
+    2: required string file_format
+    3: required string compression_codec
+    4: required i64 target_table_id
+    5: required list<Descriptors.TParquetSchema> parquet_schemas
+    6: optional list<i32> partition_index
+}
+
 struct TDataSink {
   1: required TDataSinkType type
   2: optional TDataStreamSink stream_sink
@@ -193,4 +203,26 @@ struct TDataSink {
   7: optional TOlapTableSink olap_table_sink
   8: optional TMemoryScratchSink memory_scratch_sink
   9: optional TMultiCastDataStreamSink multi_cast_stream_sink
+  10: optional TIcebergTableSink iceberg_table_sink
 }
+
+struct TIcebergColumnStats {
+    1: required map<i32, i64> columnSizes
+    2: required map<i32, i64> valueCounts
+    3: required map<i32, i64> nullValueCounts
+    4: optional map<i32, i64> nanValueCounts
+    5: required map<i32, binary> lowerBounds;
+    6: required map<i32, binary> upperBounds;
+}
+
+struct TIcebergDataFile {
+    1: required string path
+    2: required string format
+    3: required i64 record_count
+    4: required i64 file_size_in_bytes
+    5: required string partition_path;
+    6: required list<i64> split_offsets;
+    7: required TIcebergColumnStats column_stats;
+}
+
+

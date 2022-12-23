@@ -72,7 +72,6 @@ import static com.starrocks.common.util.DateUtils.DATE_TIME_FORMATTER;
 public class Column implements Writable {
 
     public static final String CAN_NOT_CHANGE_DEFAULT_VALUE = "Can not change default value";
-
     @SerializedName(value = "name")
     private String name;
     @SerializedName(value = "type")

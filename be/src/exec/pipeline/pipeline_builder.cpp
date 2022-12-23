@@ -122,6 +122,8 @@ OpFactories PipelineBuilderContext::maybe_interpolate_local_shuffle_exchange(
     pred_operators.emplace_back(std::move(local_shuffle_sink));
     add_pipeline(pred_operators);
 
+
+
     // Create a new pipeline beginning with a local shuffle source.
     OpFactories operators_source_with_local_shuffle;
     local_shuffle_source->set_degree_of_parallelism(shuffle_partitions_num);

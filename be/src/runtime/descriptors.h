@@ -209,6 +209,9 @@ public:
     IcebergTableDescriptor(const TTableDescriptor& tdesc, ObjectPool* pool);
     ~IcebergTableDescriptor() override = default;
     bool has_partition() const override { return false; }
+    std::vector<std::string> const partition_columns_names() const { return _partitionNames; }
+private:
+    std::vector<std::string> _partitionNames;
 };
 
 class FileTableDescriptor : public HiveTableDescriptor {

@@ -43,8 +43,12 @@ import com.starrocks.sql.ast.TruncateTableStmt;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.statistics.Statistics;
+import com.starrocks.thrift.TIcebergColumnStats;
+import com.starrocks.thrift.TIcebergDataFile;
 
+import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 public interface ConnectorMetadata {
     /**
@@ -110,6 +114,9 @@ public interface ConnectorMetadata {
                                           List<ColumnRefOperator> columns,
                                           List<PartitionKey> partitionKeys) {
         return Statistics.builder().build();
+    }
+
+    default void finishInsert(String dbName, String tableName, List<TIcebergDataFile> computedStatistics) {
     }
 
     /**

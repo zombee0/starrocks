@@ -194,6 +194,10 @@ public class CreateTableStmt extends DdlStmt {
         return isExternal;
     }
 
+    public String getCatalogName() {
+        return tableName.getCatalog();
+    }
+
     public TableName getDbTbl() {
         return tableName;
     }

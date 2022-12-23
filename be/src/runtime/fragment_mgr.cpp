@@ -296,6 +296,13 @@ void FragmentExecState::coordinator_callback(const Status& status, RuntimeProfil
                 params.commitInfos.push_back(info);
             }
         }
+        if (!runtime_state->iceberg_commit_infos().empty()) {
+            params.__isset.iceberg_commit_infos = true;
+            params.iceberg_commit_infos.reserve(runtime_state->iceberg_commit_infos().size());
+            for (auto& info: runtime_state->iceberg_commit_infos()) {
+                params.iceberg_commit_infos.push_back(info);
+            }
+        }
         if (!runtime_state->tablet_fail_infos().empty()) {
             params.__set_failInfos(runtime_state->tablet_fail_infos());
         }

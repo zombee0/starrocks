@@ -117,6 +117,7 @@ void GlobalDriverExecutor::_worker_thread() {
             SCOPED_THREAD_LOCAL_MEM_TRACKER_SETTER(runtime_state->instance_mem_tracker());
 
             if (fragment_ctx->is_canceled()) {
+                LOG(WARNING) << "============ fragment is_canceled ===============";
                 driver->cancel_operators(runtime_state);
                 if (driver->is_still_pending_finish()) {
                     driver->set_driver_state(DriverState::PENDING_FINISH);
@@ -128,6 +129,7 @@ void GlobalDriverExecutor::_worker_thread() {
             }
             // a blocked driver is canceled because of fragment cancellation or query expiration.
             if (driver->is_finished()) {
+//                LOG(WARNING) << "============ driver is finished ===============";
                 _finalize_driver(driver, runtime_state, driver->driver_state());
                 continue;
             }

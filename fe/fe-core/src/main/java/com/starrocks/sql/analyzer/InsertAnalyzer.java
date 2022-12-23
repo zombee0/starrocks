@@ -20,6 +20,7 @@ import com.google.common.collect.Sets;
 import com.starrocks.analysis.Expr;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Database;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.MaterializedView;
 import com.starrocks.catalog.MysqlTable;
 import com.starrocks.catalog.OlapTable;
@@ -70,7 +71,7 @@ public class InsertAnalyzer {
                                 ((OlapTable) table).getState());
                 throw unsupportedException(msg);
             }
-        } else if (!(table instanceof OlapTable) && !(table instanceof MysqlTable)) {
+        } else if (!(table instanceof OlapTable) && !(table instanceof MysqlTable) && !(table instanceof IcebergTable)) {
             throw unsupportedException("Only support insert into olap table or mysql table");
         }
 

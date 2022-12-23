@@ -328,6 +328,36 @@ public class IcebergUtil {
         }
     }
 
+    public static org.apache.iceberg.types.Type fromSRType(Type type) {
+        PrimitiveType primitiveType = type.getPrimitiveType();
+        // for type with length, like char(10), we only check the type and ignore the length
+        // TODO: fixed and binary should be considered as binary
+        switch (primitiveType) {
+            case BOOLEAN:
+                return Types.BooleanType.get();
+            case INT:
+            case BIGINT:
+                return Types.IntegerType.get();
+            case FLOAT:
+                return Types.FloatType.get();
+            case DOUBLE:
+                return Types.DoubleType.get();
+            case DATE:
+                return Types.DateType.get();
+            case DATETIME:
+                return Types.TimestampType.withoutZone();
+            case VARCHAR:
+            case CHAR:
+                return Types.StringType.get();
+            case DECIMAL32:
+            case DECIMAL64:
+            case DECIMAL128:
+                return Types.DecimalType.of(type.getPrecision(), 10);
+            default:
+                throw new StarRocksIcebergException("does support");
+        }
+    }
+
     public static Type convertColumnType(org.apache.iceberg.types.Type icebergType) {
         if (icebergType == null) {
             return Type.NULL;

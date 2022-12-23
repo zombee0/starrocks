@@ -15,6 +15,7 @@
 #include "exec/pipeline/fragment_executor.h"
 
 #include <unordered_map>
+#include <exec/pipeline/sink/iceberg_table_sink_operator.h>
 
 #include "common/config.h"
 #include "exec/exchange_node.h"
@@ -49,6 +50,7 @@
 #include "runtime/memory_scratch_sink.h"
 #include "runtime/multi_cast_data_stream_sink.h"
 #include "runtime/mysql_table_sink.h"
+#include "runtime/iceberg_table_sink.h"
 #include "runtime/result_sink.h"
 #include "runtime/stream_load/stream_load_context.h"
 #include "runtime/stream_load/transaction_mgr.h"
@@ -821,7 +823,7 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
         // by FE is same as the source_operator_dop.
         // For insert into select, in the simplest case like insert into table select * from table2;
         // the desired_tablet_sink_dop set by FE is same as the source_operator_dop.
-        // However, if the select statement is complex, like insert into table select * from table2 limit 1,
+        // However, if the select statement is complex, like insert into t_decompose_data_sink_to_operatorable select * from table2 limit 1,
         // the desired_tablet_sink_dop set by FE is not same as the source_operator_dop, and it needs to
         // add a local passthrough exchange here
         if (desired_tablet_sink_dop != source_operator_dop) {
@@ -872,6 +874,54 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
                 context->next_operator_id(), request.output_sink().mysql_table_sink,
                 mysql_table_sink->get_output_expr(), dop, fragment_ctx);
         fragment_ctx->pipelines().back()->add_op_factory(op);
+    } else if (typeid(*datasink) == typeid(starrocks::IcebergTableSink)) {
+        auto* iceberg_table_sink = down_cast<starrocks::IcebergTableSink*>(datasink.get());
+        std::vector<TExpr> partition_expr;
+        std::vector<ExprContext*> partition_expr_ctxs;
+        auto output_expr = iceberg_table_sink->get_output_expr();
+        for (int i = 0; i < thrift_sink.iceberg_table_sink.partition_index.size(); ++i) {
+            partition_expr.emplace_back(iceberg_table_sink->get_output_expr()[thrift_sink.iceberg_table_sink.partition_index[i]]);
+        }
+        RETURN_IF_ERROR(Expr::create_expr_trees(runtime_state->obj_pool(), partition_expr, &partition_expr_ctxs, runtime_state));
+        RETURN_IF_ERROR(Expr::prepare(partition_expr_ctxs, runtime_state));
+        RETURN_IF_ERROR(Expr::open(partition_expr_ctxs, runtime_state));
+
+        size_t desired_iceberg_sink_dop = request.pipeline_sink_dop();
+//        size_t source_operator_dop = fragment_ctx->pipelines().back()->source_operator_factory()->degree_of_parallelism();
+
+        OpFactoryPtr op = std::make_shared<IcebergTableSinkOperatorFactory>(
+                context->next_operator_id(), iceberg_table_sink->get_output_expr(), fragment_ctx, thrift_sink.iceberg_table_sink, partition_expr);
+
+        auto pseudo_plan_node_id = context->next_pseudo_plan_node_id();
+        auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(desired_iceberg_sink_dop * runtime_state->chunk_size() *
+                                                                            context->localExchangeBufferChunks());
+        auto local_shuffle_source =
+                std::make_shared<LocalExchangeSourceOperatorFactory>(context->next_operator_id(), pseudo_plan_node_id, mem_mgr);
+        local_shuffle_source->set_runtime_state(runtime_state);
+        OpFactories& pred_operators = fragment_ctx->pipelines().back()->get_op_factories();
+        auto local_shuffle =
+                std::make_shared<PartitionExchanger>(mem_mgr, local_shuffle_source.get(), TPartitionType::type::HASH_PARTITIONED, partition_expr_ctxs,
+                                                     desired_iceberg_sink_dop);
+
+        // Append local shuffle sink to the tail of the current pipeline, which comes to end.
+        auto local_shuffle_sink =
+                std::make_shared<LocalExchangeSinkOperatorFactory>(context->next_operator_id(), pseudo_plan_node_id, local_shuffle);
+        pred_operators.emplace_back(std::move(local_shuffle_sink));
+
+        OpFactories operators_source_with_local_shuffle;
+        local_shuffle_source->set_degree_of_parallelism(desired_iceberg_sink_dop);
+        operators_source_with_local_shuffle.emplace_back(std::move(local_shuffle_source));
+        operators_source_with_local_shuffle.emplace_back(std::move(op));
+
+        auto pipeline_with_local_exchange_source =
+                std::make_shared<Pipeline>(context->next_pipe_id(), operators_source_with_local_shuffle);
+        fragment_ctx->pipelines().emplace_back(std::move(pipeline_with_local_exchange_source));
+
+        if (iceberg_table_sink != nullptr) {
+            RETURN_IF_ERROR(iceberg_table_sink->init(thrift_sink, runtime_state));
+        }
+
+        LOG(WARNING) << "1111111111";
     } else if (typeid(*datasink) == typeid(starrocks::MemoryScratchSink)) {
         auto* memory_scratch_sink = down_cast<starrocks::MemoryScratchSink*>(datasink.get());
         auto output_expr = memory_scratch_sink->get_output_expr();

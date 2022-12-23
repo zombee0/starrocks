@@ -21,14 +21,18 @@ import com.starrocks.alter.SchemaChangeHandler;
 import com.starrocks.analysis.DescriptorTable;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.SlotDescriptor;
+import com.starrocks.analysis.SlotId;
 import com.starrocks.analysis.StringLiteral;
 import com.starrocks.analysis.TupleDescriptor;
 import com.starrocks.catalog.Column;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.KeysType;
 import com.starrocks.catalog.MysqlTable;
 import com.starrocks.catalog.OlapTable;
+import com.starrocks.catalog.Table;
 import com.starrocks.common.Pair;
 import com.starrocks.planner.DataSink;
+import com.starrocks.planner.IcebergTableSink;
 import com.starrocks.planner.MysqlTableSink;
 import com.starrocks.planner.OlapTableSink;
 import com.starrocks.planner.PlanFragment;
@@ -98,7 +102,6 @@ public class InsertPlanner {
     public ExecPlan plan(InsertStmt insertStmt, ConnectContext session) {
         QueryRelation queryRelation = insertStmt.getQueryStatement().getQueryRelation();
         List<ColumnRefOperator> outputColumns = new ArrayList<>();
-
         //1. Process the literal value of the insert values type and cast it into the type of the target table
         if (queryRelation instanceof ValuesRelation) {
             castLiteralToTargetColumnsType(insertStmt);
@@ -150,12 +153,15 @@ public class InsertPlanner {
                     queryRelation.getColumnOutputNames(), TResultSinkType.MYSQL_PROTOCAL, hasOutputFragment);
 
             DescriptorTable descriptorTable = execPlan.getDescTbl();
+            descriptorTable.addReferencedTable(insertStmt.getTargetTable());
             TupleDescriptor olapTuple = descriptorTable.createTupleDescriptor();
 
             List<Pair<Integer, ColumnDict>> globalDicts = Lists.newArrayList();
             long tableId = insertStmt.getTargetTable().getId();
-            for (Column column : insertStmt.getTargetTable().getFullSchema()) {
-                SlotDescriptor slotDescriptor = descriptorTable.addSlotDescriptor(olapTuple);
+            Table targetTbl = insertStmt.getTargetTable();
+            for (Column column : targetTbl.getFullSchema()) {
+                SlotDescriptor slotDescriptor;
+                slotDescriptor = descriptorTable.addSlotDescriptor(olapTuple);
                 slotDescriptor.setIsMaterialized(true);
                 slotDescriptor.setType(column.getType());
                 slotDescriptor.setColumn(column);
@@ -178,11 +184,13 @@ public class InsertPlanner {
                         olapTable.enableReplicatedStorage());
             } else if (insertStmt.getTargetTable() instanceof MysqlTable) {
                 dataSink = new MysqlTableSink((MysqlTable) insertStmt.getTargetTable());
+            } else if (insertStmt.getTargetTable() instanceof IcebergTable) {
+                dataSink = new IcebergTableSink(((IcebergTable) insertStmt.getTargetTable()), olapTuple.getId().asInt());
             } else {
                 throw new SemanticException("Unknown table type " + insertStmt.getTargetTable().getType());
             }
 
-            if (canUsePipeline && insertStmt.getTargetTable() instanceof OlapTable) {
+            if (canUsePipeline && (insertStmt.getTargetTable() instanceof OlapTable || insertStmt.getTargetTable() instanceof IcebergTable)) {
                 PlanFragment sinkFragment = execPlan.getFragments().get(0);
                 if (shuffleServiceEnable) {
                     // For shuffle insert into, we only support tablet sink dop = 1

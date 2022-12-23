@@ -15,6 +15,8 @@
 
 package com.starrocks.connector.exception;
 
+import com.google.errorprone.annotations.FormatMethod;
+
 import static java.lang.String.format;
 
 public class StarRocksConnectorException extends RuntimeException {
@@ -39,4 +41,10 @@ public class StarRocksConnectorException extends RuntimeException {
         return getErrorMessage();
     }
 
+    @FormatMethod
+    public static void check(boolean test, String message, Object... args) {
+        if (!test) {
+            throw new StarRocksConnectorException(message, args);
+        }
+    }
 }

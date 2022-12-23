@@ -100,7 +100,7 @@ class TabletManager;
 // Contains all required global structures, and handles to
 // singleton services. Clients must call StartServices exactly
 // once to properly initialise service state.
-class ExecEnv {
+class   ExecEnv {
 public:
     // Initial exec environment. must call this to init all
     static Status init(ExecEnv* env, const std::vector<StorePath>& store_paths);

@@ -389,10 +389,17 @@ public class IcebergTable extends Table {
         TIcebergTable tIcebergTable = new TIcebergTable();
 
         List<TColumn> tColumns = Lists.newArrayList();
+
         for (Column column : getBaseSchema()) {
             tColumns.add(column.toThrift());
         }
         tIcebergTable.setColumns(tColumns);
+
+        List<TColumn> tPartitionColumns = Lists.newArrayList();
+        for (Column column : getPartitionColumns()) {
+            tPartitionColumns.add(column.toThrift());
+        }
+        tIcebergTable.setPartition_columns(tPartitionColumns);
 
         TTableDescriptor tTableDescriptor = new TTableDescriptor(id, TTableType.ICEBERG_TABLE,
                 fullSchema.size(), 0, table, db);

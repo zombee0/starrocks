@@ -289,7 +289,6 @@ public final class SqlToScalarOperatorTranslator {
                 }
 
                 columnRefOperator.addUsedSubfieldPos(ImmutableList.copyOf(usedSubFieldPos));
-
                 for (int i = 0; i < node.getUsedStructFieldPos().size(); i++) {
                     usedSubFieldPos.pop();
                 }

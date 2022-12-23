@@ -43,6 +43,7 @@ include "PlanNodes.thrift"
 include "Planner.thrift"
 include "Descriptors.thrift"
 include "Data.thrift"
+include "DataSinks.thrift"
 include "Exprs.thrift"
 include "RuntimeProfile.thrift"
 include "MasterService.thrift"
@@ -476,6 +477,8 @@ struct TReportExecStatusParams {
   20: optional InternalService.TLoadJobType load_type
 
   21: optional list<Types.TTabletFailInfo> failInfos
+
+  22: optional list<DataSinks.TIcebergDataFile> iceberg_commit_infos
 }
 
 struct TFeResult {

@@ -563,6 +563,14 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
 
     private PartitionDesc getPartitionDesc(StarRocksParser.PartitionDescContext context) {
         List<PartitionDesc> partitionDescList = new ArrayList<>();
+        List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
+
+        if (context.PARTITIONED() != null) {
+            List<String> columnList = identifierList.stream().map(Identifier::getValue).collect(toList());
+            PartitionDesc partitionDesc = new RangePartitionDesc(columnList, partitionDescList);
+            return partitionDesc;
+        }
+
         if (context.partitionExpression() != null) {
             for (StarRocksParser.RangePartitionDescContext rangePartitionDescContext : context.rangePartitionDesc()) {
                 final PartitionDesc rangePartitionDesc = (PartitionDesc) visit(rangePartitionDescContext);
@@ -580,7 +588,6 @@ public class AstBuilder extends StarRocksBaseVisitor<ParseNode> {
             return new ExpressionPartitionDesc(rangePartitionDesc, expr);
         }
 
-        List<Identifier> identifierList = visit(context.identifierList().identifier(), Identifier.class);
         List<String> columnList = identifierList.stream().map(Identifier::getValue).collect(toList());
         PartitionDesc partitionDesc = null;
         if (context.RANGE() != null) {

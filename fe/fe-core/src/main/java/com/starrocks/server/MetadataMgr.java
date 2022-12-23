@@ -29,10 +29,12 @@ import com.starrocks.connector.ConnectorMgr;
 import com.starrocks.connector.RemoteFileInfo;
 import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.DropTableStmt;
 import com.starrocks.sql.optimizer.OptimizerContext;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.statistics.Statistics;
+import com.starrocks.thrift.TIcebergDataFile;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -177,6 +179,30 @@ public class MetadataMgr {
     public void refreshTable(String catalogName, String srDbName, Table table, List<String> partitionNames) {
         Optional<ConnectorMetadata> connectorMetadata = getOptionalMetadata(catalogName);
         connectorMetadata.ifPresent(metadata -> metadata.refreshTable(srDbName, table, partitionNames));
+    }
+
+    public void createTable(String catalogName, CreateTableStmt stmt) {
+        Optional<ConnectorMetadata> connectorMetadata = getOptionalMetadata(catalogName);
+        connectorMetadata.ifPresent(metadata -> {
+            try {
+                metadata.createTable(stmt);
+            } catch (DdlException e) {
+                LOG.error("create table error", e);
+                throw new StarRocksConnectorException(e.getMessage());
+            }
+        });
+    }
+
+    public void finishInsert(String catalogName, String dbName, String tableName, List<TIcebergDataFile> computedStatistics) {
+        Optional<ConnectorMetadata> connectorMetadata = getOptionalMetadata(catalogName);
+        connectorMetadata.ifPresent(metadata -> {
+            try {
+                metadata.finishInsert(dbName, tableName, computedStatistics);
+            } catch (StarRocksConnectorException e) {
+                LOG.error("commit iceberg table failed", e);
+                throw new StarRocksConnectorException(e.getMessage());
+            }
+        });
     }
 
     private class QueryMetadatas {

@@ -156,6 +156,10 @@ IcebergTableDescriptor::IcebergTableDescriptor(const TTableDescriptor& tdesc, Ob
         : HiveTableDescriptor(tdesc, pool) {
     _table_location = tdesc.icebergTable.location;
     _columns = tdesc.icebergTable.columns;
+    _partition_columns = tdesc.icebergTable.partition_columns;
+    for (const auto& column : _partition_columns) {
+        _partitionNames.emplace_back(column.column_name);
+    }
 }
 
 DeltaLakeTableDescriptor::DeltaLakeTableDescriptor(const TTableDescriptor& tdesc, ObjectPool* pool)

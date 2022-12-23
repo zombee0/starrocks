@@ -136,6 +136,7 @@ public class Database extends MetaObject implements Writable {
         this.replicaQuotaSize = FeConstants.default_db_replica_quota_size;
     }
 
+
     private String getOwnerInfo(Thread owner) {
         if (owner == null) {
             return "";
