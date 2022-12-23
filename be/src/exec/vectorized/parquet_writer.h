@@ -27,6 +27,7 @@
 
 #include "formats/parquet/file_writer.h"
 #include "fs/fs.h"
+#include "gen_cpp/parquet_types.h"
 
 //SinkOperator
 // member
@@ -43,16 +44,29 @@
 
 namespace starrocks::vectorized {
 
-class TableInfo;
-class PartitionInfo;
+struct TableInfo;
+struct PartitionInfo;
+
+struct TableInfo {
+    std::string _table_location;
+    tparquet::CompressionCodec::type _compress_type = tparquet::CompressionCodec::GZIP;
+    bool _enable_dictionary = true;
+
+    std::shared_ptr<::parquet::schema::GroupNode> _schema;;
+};
+
+struct PartitionInfo {
+    std::vector<std::string> _column_names;
+    std::vector<std::string> _column_values;
+};
 
 class ParquetWriterWrap {
 public:
-    ParquetWriterWrap(const TableInfo* tableInfo, const PartitionInfo* partitionInfo);
+    ParquetWriterWrap(const TableInfo& tableInfo, const PartitionInfo& partitionInfo);
     ~ParquetWriterWrap() = default;
 
     // init filesystem, init writeproperties, schema
-    Status init_parquet_writer(const TableInfo* tableInfo, const PartitionInfo* partitionInfo);
+    Status init_parquet_writer(const TableInfo& tableInfo, const PartitionInfo& partitionInfo);
     Status append_chunk(vectorized::Chunk* chunk); //check if we need a new file, file_writer->write
     Status close();
     bool writable() { return _writer == nullptr || _writer->writable(); }
@@ -68,10 +82,11 @@ private:
     std::shared_ptr<starrocks::parquet::FileWriter> _writer = nullptr;
     std::shared_ptr<::parquet::WriterProperties> _properties;
     std::shared_ptr<::parquet::schema::GroupNode> _schema;
-    std::string _current_file = nullptr;
+    std::string _partition_dir;
+    int32_t _cnt = 0;
     std::vector<std::shared_ptr<::parquet::FileMetaData>> _metadatas;
     std::vector<std::shared_ptr<starrocks::parquet::FileWriter>> _pending_commits;
-    int64_t _max_file_size = 1024 * 1024 * 1024;
+    int64_t _max_file_size = 2048; // 1024 * 1024 * 1024;
 };
 
 } // namespace starrocks::vectorized

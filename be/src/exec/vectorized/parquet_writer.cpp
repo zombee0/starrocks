@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <fmt/format.h>
 
 #include "exec/vectorized/parquet_writer.h"
 #include "runtime/exec_env.h"
@@ -19,20 +20,71 @@
 
 namespace starrocks::vectorized {
 
-ParquetWriterWrap::ParquetWriterWrap(const TableInfo* tableInfo, const PartitionInfo* partitionInfo) {
+ParquetWriterWrap::ParquetWriterWrap(const TableInfo& tableInfo, const PartitionInfo& partitionInfo) {
+    std::cout << "construct" << std::endl;
     init_parquet_writer(tableInfo, partitionInfo);
 }
 
-Status ParquetWriterWrap::init_parquet_writer(const TableInfo* tableInfo, const PartitionInfo* partitionInfo) {
-    // init fs property schema with tableInfo and partitionInfo
-    // ::parquet::schema::NodeVector fields;
-    // ::parquet::Repetition::type rep_type;
-    // ::parquet::Type::type data_type;
-
-    //
-    // location, schema, format, compress, dirctory default = enable,
-    // partitionInfo:  column(FE) and chunk -> columnValue filepath
-    // iceberg rolling file name
+Status ParquetWriterWrap::init_parquet_writer(const TableInfo& tableInfo, const PartitionInfo& partitionInfo) {
+    std::cout << "init" << std::endl;
+    ASSIGN_OR_RETURN(_fs, FileSystem::CreateSharedFromString(tableInfo._table_location));
+    std::cout << "fs done" << std::endl;
+    _schema = tableInfo._schema;
+    ::parquet::WriterProperties::Builder builder;
+    if (tableInfo._enable_dictionary) {
+        builder.enable_dictionary();
+    } else {
+        builder.disable_dictionary();
+    }
+    builder.version(::parquet::ParquetVersion::PARQUET_2_0);
+    switch (tableInfo._compress_type) {
+        case tparquet::CompressionCodec::UNCOMPRESSED : {
+        builder.compression(::parquet::Compression::UNCOMPRESSED);
+        break;
+    }
+    case tparquet::CompressionCodec::SNAPPY : {
+        builder.compression(::parquet::Compression::SNAPPY);
+        break;
+    }
+    case tparquet::CompressionCodec::GZIP : {
+        builder.compression(::parquet::Compression::GZIP);
+        break;
+    }
+    case tparquet::CompressionCodec::LZO : {
+        builder.compression(::parquet::Compression::LZO);
+        break;
+    }
+    case tparquet::CompressionCodec::BROTLI : {
+        builder.compression(::parquet::Compression::BROTLI);
+        break;
+    }
+    case tparquet::CompressionCodec::LZ4 : {
+        builder.compression(::parquet::Compression::LZ4);
+        break;
+    }
+    case tparquet::CompressionCodec::ZSTD : {
+        builder.compression(::parquet::Compression::ZSTD);
+        break;
+    }
+    default: {
+        return Status::InvalidArgument("Error compression type");
+    }
+    }
+    _properties = builder.build();
+    std::cout << "properties done" << std::endl;
+    if (partitionInfo._column_names.size() != partitionInfo._column_values.size()) {
+        return Status::InvalidArgument("columns and values are not matched in partitionInfo");
+    }
+    std::stringstream ss;
+    ss << tableInfo._table_location;
+    for (size_t i = 0; i < partitionInfo._column_names.size(); i++) {
+        ss << partitionInfo._column_names[i];
+        ss << "=";
+        ss << partitionInfo._column_values[i];
+        ss << "/";
+    }
+    _partition_dir = ss.str();
+    std::cout << _partition_dir << std::endl;
     return Status::OK();
 }
 
@@ -59,20 +111,30 @@ Status ParquetWriterWrap::init_parquet_writer(const TableInfo* tableInfo, const 
 
 
 std::string ParquetWriterWrap::get_new_file_name() {
-    _current_file = "test";
-    return _current_file;
+    _cnt += 1;
+    return _partition_dir + fmt::format("test_{}.parquet", _cnt);
 }
 
 Status ParquetWriterWrap::new_file_writer() {
+    std::cout << "new file" << std::endl;
     std::string file_name = get_new_file_name();
-    ASSIGN_OR_RETURN(auto writable_file, _fs->new_writable_file(file_name));
+    std::cout << file_name << std::endl;
+    WritableFileOptions options{.sync_on_close = false, .mode = FileSystem::CREATE_OR_OPEN_WITH_TRUNCATE};
+    ASSIGN_OR_RETURN(auto writable_file, _fs->new_writable_file(options, file_name));
+    std::cout << "writable file done" << std::endl;
     _writer = std::make_shared<starrocks::parquet::FileWriter>(std::move(writable_file), _properties, _schema);
-    return Status::OK();
+    std::cout << "file writer created" << std::endl;
+    auto st = _writer -> init();
+    std::cout << "file writer inited" << std::endl;
+    return st;
 }
 
 Status ParquetWriterWrap::append_chunk(vectorized::Chunk* chunk) {
     if (_writer == nullptr) {
-        new_file_writer();
+        auto status = new_file_writer();
+        if (!status.ok()) {
+            std::cout << status.detailed_message() << std::endl;
+        }
     }
     // exceed file size
     if (_writer->get_written_bytes() > _max_file_size) {

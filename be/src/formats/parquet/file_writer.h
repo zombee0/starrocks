@@ -39,8 +39,12 @@ public:
     arrow::Status Write(const std::shared_ptr<arrow::Buffer> &data) override;
     arrow::Status Close() override;
     arrow::Result<int64_t> Tell() const override;
+
     bool closed() const override { return _is_closed; };
+
     int64_t get_written_len() const;
+
+    void set_written_len(int64_t written_len);
 
 private:
     std::shared_ptr<starrocks::WritableFile> _wfile;
@@ -71,7 +75,7 @@ private:
     std::unique_ptr<::parquet::ParquetFileWriter> _writer;
     ::parquet::RowGroupWriter* _rg_writer = nullptr;
     int64_t _cur_written_rows;
-    int64_t _max_row_group_size = 128 * 1024 * 1024;
+    int64_t _max_row_group_size = 1024; // 128 * 1024 * 1024;
     std::shared_ptr<::parquet::FileMetaData> _file_metadata;
     std::atomic<bool> _rg_writer_closing = false;
     std::atomic<bool> _closed = false;

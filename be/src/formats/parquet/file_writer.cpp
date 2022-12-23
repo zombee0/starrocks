@@ -22,9 +22,16 @@ namespace starrocks::parquet {
 
 ParquetOutputStream::ParquetOutputStream(std::shared_ptr<starrocks::WritableFile> wfile)
     : _wfile(wfile) {
+    set_mode(arrow::io::FileMode::WRITE);
+    std::cout << "output stream create" << std::endl;
 }
 
-ParquetOutputStream::~ParquetOutputStream() {}
+ParquetOutputStream::~ParquetOutputStream() {
+    arrow::Status st = Close();
+    if (!st.ok()) {
+        LOG(WARNING) << "close parquet output stream failed: " << st;
+    }
+}
 
 arrow::Status ParquetOutputStream::Write(const std::shared_ptr<arrow::Buffer> &data) {
     Write(data->data(), data->size());
@@ -35,8 +42,12 @@ arrow::Status ParquetOutputStream::Write(const void* data, int64_t nbytes) {
     if (_is_closed) {
         return arrow::Status::OK();
     }
+    std::cout << "write data, length: " << nbytes << std::endl;
+    const char* ch = reinterpret_cast<const char*>(data);
+    std::cout << "write data, data: " << ch[0] << ch[1] << ch[2] << ch[3] << std::endl;
     // use _wfilt->append()
-    Status st = _wfile->appendv(reinterpret_cast<const Slice*>(data), nbytes);
+    Slice slice(ch, nbytes);
+    Status st = _wfile->append(slice);
     if (!st.ok()) {
         return arrow::Status::IOError(st.to_string());
     }
@@ -65,16 +76,23 @@ int64_t ParquetOutputStream::get_written_len() const {
     return _cur_pos;
 }
 
+void ParquetOutputStream::set_written_len(int64_t written_len) {
+    _cur_pos = written_len;
+}
+
 FileWriter::FileWriter(std::shared_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
     std::shared_ptr<::parquet::schema::GroupNode> schema)
     : _properties(properties), _schema(schema) {
+    std::cout << "FileWriter ctor" << std::endl;
     _outstream = std::make_shared<ParquetOutputStream>(writable_file);
 }
 
 ::parquet::RowGroupWriter* FileWriter::get_rg_writer() {
     if (_rg_writer == nullptr) {
+        std::cout << "Go to new RowGroup Writer" << std::endl;
         _rg_writer = _writer->AppendBufferedRowGroup();
         _cur_written_rows = 0;
+        std::cout << "got rg writer" << std::endl;
     }
     //if (_rg_writer->total_bytes_written() > _max_row_group_size) {
     //    // TODO: we need async close _rg_writer
@@ -156,7 +174,10 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
         }
     }
     _cur_written_rows += num_rows;
-    if (_rg_writer->total_bytes_written() > _max_row_group_size) {
+    std::cout << "cur_written_rows: " << _cur_written_rows  << std::endl;
+    std::cout << "rg writer written: " << _rg_writer->total_bytes_written() << std::endl;
+    //if (_rg_writer->total_bytes_written() > _max_row_group_size) {
+    if (_cur_written_rows > 200) {
         _rg_writer_closing.store(true);
         bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
                     _rg_writer->Close();
@@ -171,10 +192,12 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
 }
 
 int64_t FileWriter::get_written_bytes() const {
+    std::cout << "file written_len" << std::endl;
     int64_t written_bytes = _outstream->get_written_len();
     if (_rg_writer != nullptr) {
         written_bytes += _rg_writer->total_bytes_written();
     }
+    std::cout << written_bytes << std::endl;
     return written_bytes;
 }
 
