@@ -161,6 +161,24 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
             }
             default: {
                 return Status::InvalidArgument("Unsupported type");
+        }
+        _cur_written_rows += num_rows;
+//        LOG(WARNING) << "============= cur_written_rows: [" << _cur_written_rows << "]=======";
+//        LOG(WARNING) << "============= rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
+//        LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
+        //if (_rg_writer->total_bytes_written() > _max_row_group_size) {
+        if (_rg_writer->total_compressed_bytes() + _rg_writer-> total_bytes_written() > 2000000) {
+            _rg_writer_closing.store(true);
+            bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+                _rg_writer->Close();
+//                LOG(WARNING) << "============= after close rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
+//                LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
+                _rg_writer = nullptr;
+                _rg_writer_closing.store(false);
+                COUNTER_UPDATE(_rg_close_counter, 1);
+            });
+            if (!ret) {
+                _rg_writer_closing.store(false);
             }
         }
     }
