@@ -170,6 +170,7 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
         if (_rg_writer->total_compressed_bytes() + _rg_writer-> total_bytes_written() > 2000000) {
             _rg_writer_closing.store(true);
             bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+                LOG(WARNING) << "another rowgroup -> rg writer close";
                 _rg_writer->Close();
 //                LOG(WARNING) << "============= after close rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
 //                LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
@@ -222,6 +223,37 @@ size_t FileWriter::get_written_bytes() {
 
     return rg_writer->total_bytes_written() + rg_writer->total_compressed_bytes() + estimated_bytes;
 }
+
+//Status FileWriter::close() {
+//    LOG(WARNING) << "rg writer close ====================";
+//    size_t total_bytes_written{0};
+//    if (_rg_writer != nullptr) {
+//        for (size_t i = 0; i < _rg_writer->num_columns(); i++) {
+//            if (_rg_writer->column(i)) {
+//                total_bytes_written += _rg_writer->column(i)->total_bytes_written();
+////                    LOG(WARNING) << "============= before close rg writer: [" << total_bytes_written << "]=======";
+//            }
+//        }
+//        LOG(WARNING) << "filewriter close -> rg writer close";
+//        _rg_writer->Close();
+//        for (size_t i = 0; i < _rg_writer->num_columns(); i++) {
+//            if (_rg_writer->column(i)) {
+//                total_bytes_written += _rg_writer->column(i)->total_bytes_written();
+////                    LOG(WARNING) << "============= after close rg writer: [" << total_bytes_written << "]=======";
+//            }
+//        }
+//        _total_rows += _cur_written_rows;
+//        _rg_writer = nullptr;
+//    }
+//    _writer->Close();
+//    _file_metadata = _writer->metadata();
+//    auto st = _outstream->Close();
+//    if (st != ::arrow::Status::OK()) {
+//        return Status::InternalError("Close file failed!");
+//    }
+//    _closed.store(true);
+//    return Status::OK();
+//}
 
 Status FileWriter::close() {
     if (rg_writer != nullptr) {
