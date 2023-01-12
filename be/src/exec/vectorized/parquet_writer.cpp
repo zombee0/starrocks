@@ -185,7 +185,7 @@ namespace starrocks::vectorized {
             if (writer != nullptr && writer->closed()) {
                 LOG(WARNING) << "======== parquet writer wrap close start ====================";
                 TIcebergDataFile dataFile;
-                _writer->buildIcebergDataFile(dataFile);
+                writer->buildIcebergDataFile(dataFile);
                 dataFile.partition_path = _partition_dir;
                 dataFile.path = _location;
                 _data_files.emplace_back(dataFile);

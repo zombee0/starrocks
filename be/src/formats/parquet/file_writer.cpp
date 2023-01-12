@@ -167,10 +167,19 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
 //        LOG(WARNING) << "============= rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
 //        LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
         //if (_rg_writer->total_bytes_written() > _max_row_group_size) {
-        if (_rg_writer->total_compressed_bytes() + _rg_writer-> total_bytes_written() > 2000000) {
+        // if (_rg_writer->total_compressed_bytes() + _rg_writer-> total_bytes_written() > 2000000) {
+        if (_cur_written_rows > 20000) {
             _rg_writer_closing.store(true);
             bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
-                LOG(WARNING) << "another rowgroup -> rg writer close";
+                std::stringstream ss;
+                ss << "another rowgroup -> rg writer close" << std::endl;
+                for (size_t i = 0; i < _rg_writer->num_columns(); i++) {
+                    if (_rg_writer->column(i)) {
+                        ss << i << " rows: " << _rg_writer->column(i)->rows_written() << std::endl;
+//                    LOG(WARNING) << "============= before close rg writer: [" << total_bytes_written << "]=======";
+                    }
+                }
+                LOG(WARNING) << ss.str();
                 _rg_writer->Close();
 //                LOG(WARNING) << "============= after close rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
 //                LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
@@ -294,6 +303,29 @@ Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
             auto column_meta = block->ColumnChunk(j);
             int field_id = j + 1;
             if (null_value_counts.find(field_id) == null_value_counts.end()) {
+=======
+    Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
+        dataFile.format = "parquet";
+        dataFile.record_count = _cur_written_rows;
+        dataFile.file_size_in_bytes = get_written_bytes();
+        std::vector<int64_t> split_offsets;
+        LOG(WARNING) << "go to splitOffsets";
+        splitOffsets(split_offsets);
+        dataFile.split_offsets = split_offsets;
+
+        std::unordered_map<int32_t, int64_t> column_sizes;
+        std::unordered_map<int32_t, int64_t> value_counts;
+        std::unordered_map<int32_t, int64_t> null_value_counts;
+        std::unordered_map<int32_t, std::string> min_values;
+        std::unordered_map<int32_t, std::string> max_values;
+
+        for (int i = 0; i < _file_metadata->num_row_groups(); ++i) {
+            auto block = _file_metadata->RowGroup(i);
+            for (int j = 0; j < block->num_columns(); j++) {
+                auto column_meta = block->ColumnChunk(j);
+                int field_id = j + 1;
+                if (null_value_counts.find(field_id) == null_value_counts.end()) {
+>>>>>>> a93c4625b (checkpoint _writer)
 //                    LOG(WARNING) << "================null_value_counts============";
                 null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
             } else {
@@ -339,12 +371,22 @@ Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
 }
 
 Status FileWriter::splitOffsets(std::vector<int64_t>& splitOffsets) {
+    LOG(WARNING) << "In splitOffsets";
+    if (closed()) {
+        LOG(WARNING) << "file closed";
+    }
+    if (_file_metadata.get() == nullptr) {
+        LOG(WARNING) << "file metadata null";
+    }
     for (int i = 0; i < _file_metadata->num_row_groups(); i++) {
+        LOG(WARNING) << "======row group======:  " << i;
         auto first_column_meta = _file_metadata->RowGroup(i)->ColumnChunk(0);
         int64_t dict_page_offset = first_column_meta->dictionary_page_offset();
         int64_t first_data_page_offset = first_column_meta->data_page_offset();
+        LOG(WARNING) << "======[dict_page_offset]=====[" << dict_page_offset << "]============";
+        LOG(WARNING) << "======[first_data_page_offset]=====[" << first_data_page_offset << "]============";
         int64_t split_offset = dict_page_offset > 0 && dict_page_offset < first_data_page_offset ? dict_page_offset
-                                                                                                 : first_data_page_offset;
+                                                                                                     : first_data_page_offset;
         splitOffsets.emplace_back(split_offset);
     }
     return Status::OK();
