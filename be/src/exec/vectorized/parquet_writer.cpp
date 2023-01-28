@@ -82,38 +82,11 @@ namespace starrocks::vectorized {
         std::stringstream ss;
         ss << tableInfo._table_location;
         ss << "/data/";
-        for (size_t i = 0; i < partitionInfo._column_names.size(); i++) {
-            ss << partitionInfo._column_names[i];
-            ss << "=";
-            ss << partitionInfo._column_values[i];
-            ss << "/";
-        }
+        ss << partitionInfo.partition_dir();
         _partition_dir = ss.str();
-        std::cout << _partition_dir << std::endl;
+        // std::cout << _partition_dir << std::endl;
         return Status::OK();
     }
-
-    ::parquet::Type::type convert_type(const LogicalType type) {
-        switch (type) {
-            case TYPE_BOOLEAN:
-                return ::parquet::Type::BOOLEAN;
-            case TYPE_TINYINT:
-            case TYPE_SMALLINT:
-            case TYPE_INT:
-                return ::parquet::Type::INT32;
-            case TYPE_BIGINT:
-            case TYPE_DATE:
-            case TYPE_DATETIME:
-                return ::parquet::Type::INT64;
-            case TYPE_FLOAT:
-                return ::parquet::Type::FLOAT;
-            case TYPE_DOUBLE:
-                return ::parquet::Type::DOUBLE;
-            default:
-                throw std::runtime_error("Not Supported yet");
-        }
-    }
-
 
     std::string ParquetWriterWrap::get_new_file_name() {
         _cnt += 1;
@@ -144,6 +117,7 @@ namespace starrocks::vectorized {
         }
         // exceed file size
         if (_writer->file_size() > _max_file_size) {
+            LOG(WARNING) << "current file exceed file size, go to close: " << _location;
             auto st = close_current_writer(state);
             if (st.ok()) {
                 new_file_writer();
@@ -154,10 +128,10 @@ namespace starrocks::vectorized {
     }
 
     Status ParquetWriterWrap::close_current_writer(RuntimeState* state) {
-        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
-//            LOG(WARNING) << "closing writer ====================";
-            _writer->close();
-//            LOG(WARNING) << "closing writer finished ====================";
+        LOG(WARNING) << "close file: " << _location;
+        std::shared_ptr<starrocks::parquet::FileWriter> cur_writer = _writer;
+        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([cur_writer]() {
+            cur_writer->close();
         });
         if (ret) {
 //            LOG(WARNING) << "put pending commit writer ====================";
@@ -187,14 +161,14 @@ namespace starrocks::vectorized {
                 TIcebergDataFile dataFile;
                 writer->buildIcebergDataFile(dataFile);
                 dataFile.partition_path = _partition_dir;
-                dataFile.path = _location;
+                dataFile.path = writer->filename();
                 _data_files.emplace_back(dataFile);
 
                 _metadatas.emplace_back(writer->metadata());
                 writer = nullptr;
             }
             if (writer != nullptr && (!writer->closed())) {
-                LOG(WARNING) << "==========file writer no close current====================";
+                // LOG(WARNING) << "==========file writer no close current====================";
                 return false;
             }
         }

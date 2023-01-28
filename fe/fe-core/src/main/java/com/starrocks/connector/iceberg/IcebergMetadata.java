@@ -179,7 +179,12 @@ public class IcebergMetadata implements ConnectorMetadata {
         Schema schema = toIcebergSchema(stmt.getColumns());
         String dbName = stmt.getDbName();
         String tblName = stmt.getTableName();
-        PartitionSpec partitionSpec = parsePartitionFields(schema, ((RangePartitionDesc) stmt.getPartitionDesc()).getPartitionColNames());
+        PartitionSpec partitionSpec;
+        if (stmt.getPartitionDesc() == null) {
+            partitionSpec = PartitionSpec.unpartitioned();
+        } else {
+            partitionSpec = parsePartitionFields(schema, ((RangePartitionDesc) stmt.getPartitionDesc()).getPartitionColNames());
+        }
         String targetPath = icebergCatalog.defaultTableLocation(dbName, tblName).toString();
         return icebergCatalog.newCreateTableTransaction(dbName, tblName, schema, partitionSpec, targetPath, stmt.getProperties());
     }
@@ -197,7 +202,7 @@ public class IcebergMetadata implements ConnectorMetadata {
         for (Column column : columns) {
             int index = icebergColumns.size();
             org.apache.iceberg.types.Type type = fromSRType(column.getType());
-            Types.NestedField field = Types.NestedField.of(index, false, column.getName(), type, column.getComment());
+            Types.NestedField field = Types.NestedField.of(index, column.isAllowNull(), column.getName(), type, column.getComment());
             icebergColumns.add(field);
         }
         org.apache.iceberg.types.Type icebergSchema = Types.StructType.of(icebergColumns);
@@ -213,7 +218,6 @@ public class IcebergMetadata implements ConnectorMetadata {
         for (TIcebergDataFile dataFile : dataFiles) {
             PartitionSpec partitionSpec = nativeTbl.spec();
             Metrics metrics = buildDataFileMetrics(dataFile);
-            PartitionData partitionData = partitionDataFromPath(dataFile.partition_path, partitionSpec, nativeTbl.location() + "/data/");
             DataFiles.Builder builder =
                 DataFiles.builder(partitionSpec)
                         .withMetrics(metrics)
@@ -221,8 +225,12 @@ public class IcebergMetadata implements ConnectorMetadata {
                         .withFormat(FileFormat.PARQUET)
                         .withRecordCount(dataFile.record_count)
                         .withFileSizeInBytes(dataFile.file_size_in_bytes)
-                        .withPartition(partitionData)
                         .withSplitOffsets(dataFile.split_offsets);
+            if (partitionSpec.isPartitioned()) {
+                PartitionData partitionData = partitionDataFromPath(
+                        dataFile.partition_path, partitionSpec, nativeTbl.location() + "/data/");
+                builder.withPartition(partitionData);
+            }
             appendFiles.appendFile(builder.build());
         }
         appendFiles.commit();

@@ -27,7 +27,7 @@ void IcebergTableSinkOperator::close(RuntimeState* state) {
 
     for (auto &i : _writers) {
         if (!i.second->closed()) {
-//            LOG(WARNING) << "============[close writer]==============";
+            LOG(WARNING) << "============[error: close op -> close writer]==============";
             i.second->close(state);
         }
         for (auto &j : i.second->_data_files) {
@@ -104,6 +104,68 @@ StatusOr<vectorized::ChunkPtr> IcebergTableSinkOperator::pull_chunk(RuntimeState
 }
 
 Status IcebergTableSinkOperator::push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) {
+    if (_partition_expr_ctxs.empty()) {
+        if (_writers.find("") == _writers.end()) {
+            starrocks::vectorized::TableInfo tableInfo;
+            tableInfo._table_location = _location;
+            tableInfo._file_format = _file_format;
+            tableInfo._schema = _schema;
+            starrocks::vectorized::PartitionInfo partitionInfo;
+            auto writer = new vectorized::ParquetWriterWrap(tableInfo, partitionInfo, _output_expr_ctxs, _common_metrics.get());
+            _writers.insert({"", writer});
+            LOG(WARNING) << "==========[insert writer on [" << "" << "]===============";
+        }
+        _writers[""]->append_chunk(chunk.get(), state);
+        return Status::OK();
+    }
+
+    //std::unordered_map<std::string, std::vector<uint32_t>> partition_row_map;
+    //std::unordered_map<std::string, vectorized::PartitionInfo> partition_map;
+    //
+    //vectorized::Columns partitions_columns;
+    //partitions_columns.resize(_partition_expr_ctxs.size());
+    //for (size_t i = 0; i < partitions_columns.size(); ++i) {
+    //    ASSIGN_OR_RETURN(partitions_columns[i], _partition_expr_ctxs[i]->evaluate(chunk.get()));
+    //    DCHECK(partitions_columns[i] != nullptr);
+    //}
+    //
+    //auto* iceberg_table_desc = dynamic_cast<const IcebergTableDescriptor*>(state->desc_tbl().get_table_descriptor(_target_table_id));
+    //std::vector<std::string> partition_column_names = iceberg_table_desc->partition_columns_names();
+    //
+    //std::vector<std::string> partition_column_values;
+    //for (size_t i = 0; i < chunk->num_rows(); ++i) {
+    //    for (const vectorized::ColumnPtr& column : partitions_columns) {
+    //        partition_column_values.emplace_back(_value_to_string(column, i));
+    //    }
+    //    vectorized::PartitionInfo partitionInfo = {partition_column_names, partition_column_values};
+    //    std::string key = partitionInfo.partition_dir();
+    //
+    //    if (partition_row_map.find(key) == partition_row_map.end()) {
+    //        partition_row_map.insert({key, std::vector<uint32_t>()});
+    //        partition_map.insert({key, partitionInfo});
+    //    }
+    //    partition_row_map[key].emplace_back(i);
+    //}
+
+    //for (auto & i : partition_row_map) {
+    //    int32_t size = i.second.size();
+    //    std::string key = i.first;
+    //    auto chunk_to_submit = chunk->clone_empty_with_slot(size);
+    //    chunk_to_submit->append_selective(*chunk, i.second.data(), 0, size);
+    //    if (_writers.find(key) == _writers.end()) {
+    //        starrocks::vectorized::TableInfo tableInfo;
+    //        tableInfo._table_location = _location;
+    //        tableInfo._file_format = _file_format;
+    //        tableInfo._schema = _schema;
+    //        starrocks::vectorized::PartitionInfo partitionInfo = partition_map[key];
+    //        auto writer = new vectorized::ParquetWriterWrap(tableInfo, partitionInfo, _output_expr_ctxs, _common_metrics.get());
+    //        _writers.insert({key, writer});
+    //        LOG(WARNING) << "==========[insert writer on [" << key << "]===============";
+    //    }
+    //
+    //    _writers[key]->append_chunk(chunk_to_submit.get(), state);
+    //}
+
     auto partition_column = _partition_expr_ctxs.front()->evaluate(chunk.get());
     std::unordered_map<std::string, std::vector<uint32_t>> partition_row_map;
     auto num_size = partition_column.value()->size();
@@ -139,6 +201,26 @@ Status IcebergTableSinkOperator::push_chunk(RuntimeState* state, const vectorize
     }
 //    LOG(WARNING) << "==========[push chunk finshed]===============";
     return Status::OK();
+}
+
+std::string IcebergTableSinkOperator::_value_to_string(const ColumnPtr& column, size_t index) {
+    auto v = column->get(index);
+    std::string res;
+    v.visit([&](auto& variant) {
+        std::visit(
+            [&](auto&& arg) {
+                using T = std::decay_t<decltype(arg)>;
+                if constexpr (std::is_same_v<T, Slice> ||
+                        std::is_same_v<T, vectorized::TimestampValue> || std::is_same_v<T, vectorized::DateValue> ||
+                        std::is_same_v<T, decimal12_t> || std::is_same_v<T, DecimalV2Value>) {
+                    res = arg.to_string();
+                } else if constexpr (std::is_same_v<T, int32_t> || std::is_same_v<T, int64_t> || std::is_same_v<T, float>
+                        || std::is_same_v<T, double>) {
+                    res = std::to_string(arg);
+                }
+                }, variant);
+        });
+    return res;
 }
 
 IcebergTableSinkOperatorFactory::IcebergTableSinkOperatorFactory(int32_t id, std::vector<TExpr> t_output_expr,
@@ -234,14 +316,17 @@ void IcebergTableSinkOperatorFactory::build_schema_repetition_type(
     switch (column_repetition_type) {
         case TParquetRepetitionType::REQUIRED: {
             parquet_repetition_type = ::parquet::Repetition::REQUIRED;
+            LOG(WARNING) << "REQUIRED";
             break;
         }
         case TParquetRepetitionType::REPEATED: {
             parquet_repetition_type = ::parquet::Repetition::REPEATED;
+            LOG(WARNING) << "REPEATED";
             break;
         }
         case TParquetRepetitionType::OPTIONAL: {
             parquet_repetition_type = ::parquet::Repetition::OPTIONAL;
+            LOG(WARNING) << "OPTIONAL";
             break;
         }
         default:

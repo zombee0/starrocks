@@ -299,9 +299,15 @@ public:
                                     std::make_move_iterator(commit_info.end()));
     }
 
-    std::vector<TIcebergDataFile>& iceberg_commit_infos() { return _iceberg_sink_commit_infos; }
+    std::vector<TIcebergDataFile>& iceberg_commit_infos() {
+        std::lock_guard<std::mutex> l(_iceberg_info_lock);
+        return _iceberg_sink_commit_infos;
+    }
 
-    void add_iceberg_data_file(const TIcebergDataFile& file) { _iceberg_sink_commit_infos.push_back(file); }
+    void add_iceberg_data_file(const TIcebergDataFile& file) {
+        std::lock_guard<std::mutex> l(_iceberg_info_lock);
+        _iceberg_sink_commit_infos.push_back(file);
+    }
 
     const std::vector<TTabletFailInfo>& tablet_fail_infos() const { return _tablet_fail_infos; }
 

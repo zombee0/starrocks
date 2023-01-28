@@ -91,6 +91,9 @@ public class IcebergTableSink extends DataSink {
                 case FLOAT:
                     type = TParquetDataType.FLOAT;
                     break;
+                case DOUBLE:
+                    type = TParquetDataType.DOUBLE;
+                    break;
                 case STRING:
                     type = TParquetDataType.BYTE_ARRAY;
                     break;

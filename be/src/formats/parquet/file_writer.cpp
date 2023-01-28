@@ -50,13 +50,29 @@ arrow::Status ParquetOutputStream::Write(const void* data, int64_t nbytes) {
     }
     LOG(WARNING) << "write data, length: " << nbytes;
     const char* ch = reinterpret_cast<const char*>(data);
-    LOG(WARNING) << "write data, data: " << ch[0] << ch[1] << ch[2] << ch[3];
+    LOG(WARNING) << "write data, data: " << int(uint8(ch[0])) <<" "<< int(uint8(ch[1])) << " "
+        << int(uint8(ch[2])) << " " << int(uint8(ch[3]));
 
-    Slice slice(ch, nbytes);
-    Status st = _wfile->append(slice);
-    if (!st.ok()) {
-        return arrow::Status::IOError(st.to_string());
+    if (_header_state == INITED) {
+        _header_state = CACHED;
+    } else {
+        if (_header_state == CACHED) {
+            _header_state = WRITEN;
+            Status st = _wfile->append(Slice("PAR1"));
+            if (!st.ok()) {
+                return arrow::Status::IOError(st.to_string());
+            }
+        }
+        Status st = _wfile->append(Slice(ch, nbytes));
+        if (!st.ok()) {
+            return arrow::Status::IOError(st.to_string());
+        }
     }
+    //Slice slice(ch, nbytes);
+    //Status st = _wfile->append(slice);
+    //if (!st.ok()) {
+    //    return arrow::Status::IOError(st.to_string());
+    //}
     _cur_pos += nbytes;
     return arrow::Status::OK();
 }
@@ -92,11 +108,11 @@ FileWriter::FileWriter(std::unique_ptr<WritableFile> writable_file, std::shared_
 }
 
 ::parquet::RowGroupWriter* FileWriter::get_rg_writer() {
-    if (rg_writer == nullptr) {
-        rg_writer = _writer->AppendBufferedRowGroup();
+    if (_rg_writer == nullptr) {
+        _rg_writer = _writer->AppendBufferedRowGroup();
         _cur_written_rows = 0;
     }
-    return rg_writer;
+    return _rg_writer;
 }
 
 Status FileWriter::init() {
@@ -108,11 +124,34 @@ Status FileWriter::init() {
 }
 
 #define DISPATCH_PARQUET_NUMERIC_WRITER(WRITER, COLUMN_TYPE, NATIVE_TYPE)                                     \
-    FileWriter::get_rg_writer();                                                                    \
-    ::parquet::WRITER* col_writer = static_cast<::parquet::WRITER*>(rg_writer->column(i));                       \
+    ::parquet::RowGroupWriter* rg_writer = FileWriter::get_rg_writer();                                                                              \
+    ::parquet::WRITER* col_writer = static_cast<::parquet::WRITER*>(rg_writer->column(i));                    \
     col_writer->WriteBatch(num_rows, nullable ? def_level.data() : nullptr, nullptr,                          \
         reinterpret_cast<const NATIVE_TYPE*>(down_cast<const COLUMN_TYPE*>(data_column)->get_data().data())); \
     _buffered_values_estimate[i] = col_writer->EstimatedBufferedValueBytes();                                 \
+
+#define DISPATCH_PARQUET_STRING_WRITER()                                                                      \
+    ::parquet::RowGroupWriter* rg_writer = FileWriter::get_rg_writer();                                       \
+    ::parquet::ByteArrayWriter* col_writer = static_cast<::parquet::ByteArrayWriter*>(rg_writer->column(i));  \
+    if (nullable) {                                                                                           \
+        LOG(WARNING) << "nullable string writer";                                                             \
+        ::parquet::ByteArray value;                                                                           \
+        const vectorized::BinaryColumn* binary_col = down_cast<const vectorized::BinaryColumn*>(data_column); \
+        for (size_t i = 0; i < num_rows; i++) {                                                               \
+            value.ptr = reinterpret_cast<const uint8_t*>(binary_col->get_slice(i).get_data());                \
+            value.len = binary_col->get_slice(i).get_size();                                                  \
+            col_writer->WriteBatch(1, &def_level[i], nullptr, &value);                                        \
+        }                                                                                                     \
+    } else {                                                                                                  \
+        ::parquet::ByteArray value;                                                                           \
+        const vectorized::BinaryColumn* binary_col = down_cast<const vectorized::BinaryColumn*>(data_column); \
+        for (size_t i = 0; i < num_rows; i++) {                                                               \
+            value.ptr = reinterpret_cast<const uint8_t*>(binary_col->get_slice(i).get_data());                \
+            value.len = binary_col->get_slice(i).get_size();                                                  \
+            col_writer->WriteBatch(1, nullptr, nullptr, &value);                                              \
+        }                                                                                                     \
+    }                                                                                                         \
+    _buffered_values_estimate[i] = col_writer->EstimatedBufferedValueBytes();
 
 Status FileWriter::write(vectorized::Chunk* chunk) {
     if (!chunk->has_rows()) {
@@ -121,10 +160,10 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
 
     size_t num_rows = chunk->num_rows();
     for (size_t i = 0; i < chunk->num_columns(); i++) {
-        auto& col = chunk->get_column_by_index(i);
+        auto &col = chunk->get_column_by_index(i);
         bool nullable = col->is_nullable();
-        auto null_column = nullable && down_cast<starrocks::vectorized::NullableColumn*>(col.get())->has_null()
-                           ? down_cast<starrocks::vectorized::NullableColumn*>(col.get())->null_column()
+        auto null_column = nullable && down_cast<starrocks::vectorized::NullableColumn *>(col.get())->has_null()
+                           ? down_cast<starrocks::vectorized::NullableColumn *>(col.get())->null_column()
                            : nullptr;
         const auto data_column = vectorized::ColumnHelper::get_data_column(col.get());
 
@@ -159,36 +198,13 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
                 DISPATCH_PARQUET_NUMERIC_WRITER(DoubleWriter, starrocks::vectorized::DoubleColumn, double)
                 break;
             }
+            case TYPE_CHAR:
+            case TYPE_VARCHAR: {
+                DISPATCH_PARQUET_STRING_WRITER()
+                break;
+            }
             default: {
                 return Status::InvalidArgument("Unsupported type");
-        }
-        _cur_written_rows += num_rows;
-//        LOG(WARNING) << "============= cur_written_rows: [" << _cur_written_rows << "]=======";
-//        LOG(WARNING) << "============= rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
-//        LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
-        //if (_rg_writer->total_bytes_written() > _max_row_group_size) {
-        // if (_rg_writer->total_compressed_bytes() + _rg_writer-> total_bytes_written() > 2000000) {
-        if (_cur_written_rows > 20000) {
-            _rg_writer_closing.store(true);
-            bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
-                std::stringstream ss;
-                ss << "another rowgroup -> rg writer close" << std::endl;
-                for (size_t i = 0; i < _rg_writer->num_columns(); i++) {
-                    if (_rg_writer->column(i)) {
-                        ss << i << " rows: " << _rg_writer->column(i)->rows_written() << std::endl;
-//                    LOG(WARNING) << "============= before close rg writer: [" << total_bytes_written << "]=======";
-                    }
-                }
-                LOG(WARNING) << ss.str();
-                _rg_writer->Close();
-//                LOG(WARNING) << "============= after close rg writer written: [" << _rg_writer->total_bytes_written() << "]=======";
-//                LOG(WARNING) << "============= rg writer compression written: [" << _rg_writer->total_compressed_bytes() << "]=======";
-                _rg_writer = nullptr;
-                _rg_writer_closing.store(false);
-                COUNTER_UPDATE(_rg_close_counter, 1);
-            });
-            if (!ret) {
-                _rg_writer_closing.store(false);
             }
         }
     }
@@ -200,28 +216,49 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
 
 
 void FileWriter::_check_size() {
-    if (FileWriter::get_written_bytes() > _max_row_group_size) {
+    if (get_written_bytes() > _max_row_group_size) {
+        {
+            auto lock = std::unique_lock(_m);
+            _rg_writer_closing = true;
+        }
         bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+            std::stringstream ss;
+            ss << "another rowgroup -> rg writer close" << std::endl;
+            for (size_t i = 0; i < _rg_writer->num_columns(); i++) {
+                if (_rg_writer->column(i)) {
+                    ss << i << " rows: " << _rg_writer->column(i)->rows_written() << std::endl;
+                }
+            }
+            LOG(WARNING) << ss.str();
             _rg_writer_close();
         });
         if (!ret) {
-            _rg_writer_closing.store(false);
+            {
+                auto lock = std::unique_lock(_m);
+                _rg_writer_closing = false;
+                lock.unlock();
+                _cv.notify_one();
+            }
         }
     }
 }
 
 void FileWriter::_rg_writer_close() {
-    _rg_writer_closing.store(true);
-    rg_writer->Close();
+    _rg_writer->Close();
     _total_row_group_writen_bytes = _outstream->get_written_len();
     _total_rows += _cur_written_rows;
-    rg_writer = nullptr;
-    _rg_writer_closing.store(false);
+    _rg_writer = nullptr;
     std::fill(_buffered_values_estimate.begin(), _buffered_values_estimate.end(), 0);
+    {
+        auto lock = std::unique_lock(_m);
+        _rg_writer_closing = false;
+        lock.unlock();
+        _cv.notify_one();
+    }
 }
 
 size_t FileWriter::get_written_bytes() {
-    if (rg_writer == nullptr) {
+    if (_rg_writer == nullptr) {
         return 0;
     }
     int64_t estimated_bytes = 0;
@@ -230,7 +267,7 @@ size_t FileWriter::get_written_bytes() {
         estimated_bytes += i;
     }
 
-    return rg_writer->total_bytes_written() + rg_writer->total_compressed_bytes() + estimated_bytes;
+    return _rg_writer->total_bytes_written() + _rg_writer->total_compressed_bytes() + estimated_bytes;
 }
 
 //Status FileWriter::close() {
@@ -265,17 +302,35 @@ size_t FileWriter::get_written_bytes() {
 //}
 
 Status FileWriter::close() {
-    if (rg_writer != nullptr) {
-        _rg_writer_close();
+    try {
+        //if (_rg_writer_closing.load()) {
+        //    LOG(WARNING) << "closing file while rg_writer closing" << _outstream->filename();
+        //    while(_rg_writer_closing.load()) {}
+        //}
+        {
+            auto lock = std::unique_lock(_m);
+            _cv.wait(lock, [&]{ return !_rg_writer_closing; });
+        }
+
+        // _writer will close the _rg_writer
+        //if (_rg_writer != nullptr) {
+        //    _rg_writer_close();
+        //}
+        LOG(WARNING) << "closing " << _outstream->filename();
+        _writer->Close();
+        LOG(WARNING) << "closed " << _outstream->filename();
+        _file_metadata = _writer->metadata();
+        auto st = _outstream->Close();
+        if (st != ::arrow::Status::OK()) {
+            LOG(WARNING) << "Close file failed!";
+            return Status::InternalError("Close file failed!");
+        }
+        _closed.store(true);
+        return Status::OK();
+    } catch (const std::exception& e) {
+        LOG(WARNING) << "FileWriter close error: " << e.what();
+        return Status::InternalError("FileWriter close error");
     }
-    _writer->Close();
-    _file_metadata = _writer->metadata();
-    auto st = _outstream->Close();
-    if (st != ::arrow::Status::OK()) {
-        return Status::InternalError("Close file failed!");
-    }
-    _closed.store(true);
-    return Status::OK();
 }
 
 std::size_t FileWriter::file_size() {
@@ -288,6 +343,7 @@ Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
     dataFile.record_count = _cur_written_rows;
     dataFile.file_size_in_bytes = _outstream->get_written_len();
     std::vector<int64_t> split_offsets;
+    LOG(WARNING) << "go to splitOffsets";
     splitOffsets(split_offsets);
     dataFile.split_offsets = split_offsets;
 
@@ -303,29 +359,6 @@ Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
             auto column_meta = block->ColumnChunk(j);
             int field_id = j + 1;
             if (null_value_counts.find(field_id) == null_value_counts.end()) {
-=======
-    Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
-        dataFile.format = "parquet";
-        dataFile.record_count = _cur_written_rows;
-        dataFile.file_size_in_bytes = get_written_bytes();
-        std::vector<int64_t> split_offsets;
-        LOG(WARNING) << "go to splitOffsets";
-        splitOffsets(split_offsets);
-        dataFile.split_offsets = split_offsets;
-
-        std::unordered_map<int32_t, int64_t> column_sizes;
-        std::unordered_map<int32_t, int64_t> value_counts;
-        std::unordered_map<int32_t, int64_t> null_value_counts;
-        std::unordered_map<int32_t, std::string> min_values;
-        std::unordered_map<int32_t, std::string> max_values;
-
-        for (int i = 0; i < _file_metadata->num_row_groups(); ++i) {
-            auto block = _file_metadata->RowGroup(i);
-            for (int j = 0; j < block->num_columns(); j++) {
-                auto column_meta = block->ColumnChunk(j);
-                int field_id = j + 1;
-                if (null_value_counts.find(field_id) == null_value_counts.end()) {
->>>>>>> a93c4625b (checkpoint _writer)
 //                    LOG(WARNING) << "================null_value_counts============";
                 null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
             } else {
@@ -393,5 +426,3 @@ Status FileWriter::splitOffsets(std::vector<int64_t>& splitOffsets) {
 }
 
 } // namespace starrocks::parquet
-
-    

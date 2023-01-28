@@ -218,7 +218,7 @@ set(EXEC_FILES
     query_cache/cache_manager.cpp
     query_cache/lane_arbiter.cpp
     query_cache/conjugate_operator.cpp
-    query_cache/ticket_checker.cpp pipeline/sink/iceberg_table_sink_operator.cpp vectorized/parquet_writer.h vectorized/parquet_writer.cpp)
+    query_cache/ticket_checker.cpp)
 
 # simdjson Runtime Implement Dispatch: https://github.com/simdjson/simdjson/blob/master/doc/implementation-selection.md#runtime-cpu-detection
 # Unset architecture-specific flags to avoid breaking implement runtime dispatch.

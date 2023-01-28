@@ -64,6 +64,17 @@ namespace starrocks::vectorized {
     struct PartitionInfo {
         std::vector<std::string> _column_names;
         std::vector<std::string> _column_values;
+
+        std::string partition_dir() const {
+            std::stringstream ss;
+            for (size_t i = 0; i < _column_names.size(); i++) {
+                ss << _column_names[i];
+                ss << "=";
+                ss << _column_values[i];
+                ss << "/";
+            }
+            return ss.str();
+        }
     };
 
     class ParquetWriterWrap {

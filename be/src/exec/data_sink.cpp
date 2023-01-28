@@ -37,7 +37,6 @@
 #include <algorithm>
 #include <map>
 #include <memory>
-#include <runtime/iceberg_table_sink.h>
 
 #include "common/logging.h"
 #include "exec/exec_node.h"

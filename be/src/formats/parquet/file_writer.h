@@ -48,10 +48,19 @@ namespace starrocks::parquet {
 
         int64_t get_written_len() const;
 
+        const std::string& filename() { return _wfile->filename(); }
+
     private:
         std::unique_ptr<starrocks::WritableFile> _wfile;
         int64_t _cur_pos = 0;
         bool _is_closed = false;
+
+        enum HEADER_STATE {
+            INITED = 1,
+            CACHED = 2,
+            WRITEN = 3,
+        };
+        HEADER_STATE _header_state = INITED;
     };
 
     class FileWriter {
@@ -65,7 +74,10 @@ namespace starrocks::parquet {
         Status write(vectorized::Chunk* chunk);
         Status close();
         std::shared_ptr<::parquet::FileMetaData> metadata() const { return _file_metadata; }
-        bool writable() { return !(_rg_writer_closing.load()); }
+        bool writable() {
+            auto lock = std::unique_lock(_m);
+            return !_rg_writer_closing;
+        }
         bool closed() {
             return _closed.load();
         }
@@ -74,6 +86,11 @@ namespace starrocks::parquet {
         size_t get_written_bytes();
         Status splitOffsets(std::vector<int64_t> &splitOffsets);
         std::size_t file_size();
+        std::string filename() {
+            std::string name;
+            name.assign(_outstream->filename());
+            return name;
+        }
 
     private:
         ::parquet::RowGroupWriter* get_rg_writer();
@@ -84,19 +101,20 @@ namespace starrocks::parquet {
         std::shared_ptr<::parquet::WriterProperties> _properties;
         std::shared_ptr<::parquet::schema::GroupNode> _schema;
         std::unique_ptr<::parquet::ParquetFileWriter> _writer;
-        ::parquet::RowGroupWriter* rg_writer = nullptr;
+        ::parquet::RowGroupWriter* _rg_writer = nullptr;
         int64_t _cur_written_rows;
         int64_t _total_rows;
         int64_t _max_row_group_size = 128 * 1024 * 1024; // 128 * 1024 * 1024;
         std::shared_ptr<::parquet::FileMetaData> _file_metadata;
-        std::atomic<bool> _rg_writer_closing = false;
         std::atomic<bool> _closed = false;
         std::vector<ExprContext*> _output_expr_ctxs;
         RuntimeProfile* _parent_profile;
         RuntimeProfile::Counter* _rg_close_counter = nullptr;
         std::vector<int64_t> _buffered_values_estimate;
         int64_t _total_row_group_writen_bytes{0};
-
+        std::condition_variable _cv;
+        bool _rg_writer_closing = false;
+        std::mutex _m;
     };
 
 } // namespace starrocks::parquet

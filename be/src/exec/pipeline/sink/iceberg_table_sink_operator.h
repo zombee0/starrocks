@@ -65,6 +65,8 @@ public:
     Status push_chunk(RuntimeState* state, const vectorized::ChunkPtr& chunk) override;
 
 private:
+    std::string _value_to_string(const ColumnPtr& column, size_t index);
+
     std::string _location;
     std::string _file_format;
     std::string _compression_codec;
