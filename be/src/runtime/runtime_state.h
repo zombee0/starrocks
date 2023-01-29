@@ -306,7 +306,7 @@ public:
 
     void add_iceberg_data_file(const TIcebergDataFile& file) {
         std::lock_guard<std::mutex> l(_iceberg_info_lock);
-        _iceberg_sink_commit_infos.push_back(file);
+        _iceberg_sink_commit_infos.emplace_back(std::move(file));
     }
 
     const std::vector<TTabletFailInfo>& tablet_fail_infos() const { return _tablet_fail_infos; }

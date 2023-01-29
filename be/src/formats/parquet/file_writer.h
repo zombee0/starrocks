@@ -48,7 +48,7 @@ namespace starrocks::parquet {
 
         int64_t get_written_len() const;
 
-        const std::string& filename() { return _wfile->filename(); }
+        //const std::string& filename() { return _wfile->filename(); }
 
     private:
         std::unique_ptr<starrocks::WritableFile> _wfile;
@@ -65,14 +65,15 @@ namespace starrocks::parquet {
 
     class FileWriter {
     public:
-        FileWriter(std::unique_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
-                   std::shared_ptr<::parquet::schema::GroupNode> schema, const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile);
+        FileWriter(std::unique_ptr<WritableFile> writable_file, std::string file_name, std::string& partition_dir,
+                   std::shared_ptr<::parquet::WriterProperties> properties, std::shared_ptr<::parquet::schema::GroupNode> schema,
+                   const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile);
 
         ~FileWriter() = default;
 
         Status init();
         Status write(vectorized::Chunk* chunk);
-        Status close();
+        Status close(RuntimeState* state);
         std::shared_ptr<::parquet::FileMetaData> metadata() const { return _file_metadata; }
         bool writable() {
             auto lock = std::unique_lock(_m);
@@ -86,11 +87,11 @@ namespace starrocks::parquet {
         size_t get_written_bytes();
         Status splitOffsets(std::vector<int64_t> &splitOffsets);
         std::size_t file_size();
-        std::string filename() {
-            std::string name;
-            name.assign(_outstream->filename());
-            return name;
-        }
+        //std::string filename() {
+        //    std::string name;
+        //    name.assign(_outstream->filename());
+        //    return name;
+        //}
 
     private:
         ::parquet::RowGroupWriter* get_rg_writer();
@@ -98,6 +99,8 @@ namespace starrocks::parquet {
         void _rg_writer_close();
 
         std::shared_ptr<ParquetOutputStream> _outstream;
+        std::string _file_name;
+        std::string _partition_dir;
         std::shared_ptr<::parquet::WriterProperties> _properties;
         std::shared_ptr<::parquet::schema::GroupNode> _schema;
         std::unique_ptr<::parquet::ParquetFileWriter> _writer;

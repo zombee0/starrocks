@@ -101,7 +101,8 @@ namespace starrocks::vectorized {
         WritableFileOptions options{.sync_on_close = false, .mode = FileSystem::CREATE_OR_OPEN_WITH_TRUNCATE};
         ASSIGN_OR_RETURN(auto writable_file, _fs->new_writable_file(options, file_name));
         std::cout << "writable file done" << std::endl;
-        _writer = std::make_shared<starrocks::parquet::FileWriter>(std::move(writable_file), _properties, _schema, _output_expr_ctxs, _parent_profile);
+        _writer = std::make_shared<starrocks::parquet::FileWriter>(std::move(writable_file), file_name, _partition_dir,
+                                                                   _properties, _schema, _output_expr_ctxs, _parent_profile);
         std::cout << "file writer created  " << std::endl;
         auto st = _writer -> init();
         std::cout << "file writer inited  " << std::endl;
@@ -130,8 +131,8 @@ namespace starrocks::vectorized {
     Status ParquetWriterWrap::close_current_writer(RuntimeState* state) {
         LOG(WARNING) << "close file: " << _location;
         std::shared_ptr<starrocks::parquet::FileWriter> cur_writer = _writer;
-        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([cur_writer]() {
-            cur_writer->close();
+        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([cur_writer, state]() {
+            cur_writer->close(state);
         });
         if (ret) {
 //            LOG(WARNING) << "put pending commit writer ====================";
@@ -157,12 +158,12 @@ namespace starrocks::vectorized {
     bool ParquetWriterWrap::closed() {
         for (auto& writer : _pending_commits) {
             if (writer != nullptr && writer->closed()) {
-                LOG(WARNING) << "======== parquet writer wrap close start ====================";
-                TIcebergDataFile dataFile;
-                writer->buildIcebergDataFile(dataFile);
-                dataFile.partition_path = _partition_dir;
-                dataFile.path = writer->filename();
-                _data_files.emplace_back(dataFile);
+                //LOG(WARNING) << "======== parquet writer wrap close start ====================";
+                //TIcebergDataFile dataFile;
+                //writer->buildIcebergDataFile(dataFile);
+                //dataFile.partition_path = _partition_dir;
+                //dataFile.path = writer->filename();
+                // _data_files.emplace_back(dataFile);
 
                 _metadatas.emplace_back(writer->metadata());
                 writer = nullptr;

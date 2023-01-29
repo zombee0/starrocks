@@ -30,9 +30,9 @@ void IcebergTableSinkOperator::close(RuntimeState* state) {
             LOG(WARNING) << "============[error: close op -> close writer]==============";
             i.second->close(state);
         }
-        for (auto &j : i.second->_data_files) {
-            state->add_iceberg_data_file(j);
-        }
+        //for (auto &j : i.second->_data_files) {
+        //    state->add_iceberg_data_file(j);
+        //}
     }
     Operator::close(state);
 //    LOG(WARNING) << "===========[close finish]==============";

@@ -88,7 +88,7 @@ namespace starrocks::vectorized {
         Status close(RuntimeState* state);
         bool writable() { return _writer == nullptr || _writer->writable(); }
         bool closed();
-        std::vector<TIcebergDataFile> _data_files;
+        // std::vector<TIcebergDataFile> _data_files;
 
     private:
         std::string get_new_file_name();

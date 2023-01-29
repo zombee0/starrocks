@@ -98,10 +98,11 @@ int64_t ParquetOutputStream::get_written_len() const {
     return _cur_pos;
 }
 
-FileWriter::FileWriter(std::unique_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
-                       std::shared_ptr<::parquet::schema::GroupNode> schema, const std::vector<ExprContext*>& output_expr_ctxs,
-                       RuntimeProfile* parent_profile)
-        : _properties(std::move(properties)), _schema(std::move(schema)), _output_expr_ctxs(output_expr_ctxs), _parent_profile(parent_profile) {
+FileWriter::FileWriter(std::unique_ptr<WritableFile> writable_file, std::string file_name, std::string& partition_dir,
+                       std::shared_ptr<::parquet::WriterProperties> properties, std::shared_ptr<::parquet::schema::GroupNode> schema,
+                       const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile)
+        : _file_name(file_name), _partition_dir(partition_dir), _properties(std::move(properties)),
+        _schema(std::move(schema)), _output_expr_ctxs(output_expr_ctxs), _parent_profile(parent_profile) {
     _outstream = std::make_shared<ParquetOutputStream>(std::move(writable_file));
     _buffered_values_estimate.reserve(_schema->field_count());
     _rg_close_counter = ADD_COUNTER(_parent_profile, "RowGroupWriterCloseCounter", TUnit::UNIT);
@@ -301,7 +302,7 @@ size_t FileWriter::get_written_bytes() {
 //    return Status::OK();
 //}
 
-Status FileWriter::close() {
+Status FileWriter::close(RuntimeState* state) {
     try {
         //if (_rg_writer_closing.load()) {
         //    LOG(WARNING) << "closing file while rg_writer closing" << _outstream->filename();
@@ -316,15 +317,18 @@ Status FileWriter::close() {
         //if (_rg_writer != nullptr) {
         //    _rg_writer_close();
         //}
-        LOG(WARNING) << "closing " << _outstream->filename();
+        LOG(WARNING) << "closing " << _file_name;
         _writer->Close();
-        LOG(WARNING) << "closed " << _outstream->filename();
+        LOG(WARNING) << "closed " << _file_name;
         _file_metadata = _writer->metadata();
         auto st = _outstream->Close();
         if (st != ::arrow::Status::OK()) {
             LOG(WARNING) << "Close file failed!";
             return Status::InternalError("Close file failed!");
         }
+        TIcebergDataFile dataFile;
+        buildIcebergDataFile(dataFile);
+        state->add_iceberg_data_file(dataFile);
         _closed.store(true);
         return Status::OK();
     } catch (const std::exception& e) {
@@ -339,6 +343,8 @@ std::size_t FileWriter::file_size() {
 }
 
 Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
+    dataFile.partition_path = _partition_dir;
+    dataFile.path = _file_name;
     dataFile.format = "parquet";
     dataFile.record_count = _cur_written_rows;
     dataFile.file_size_in_bytes = _outstream->get_written_len();
@@ -359,7 +365,7 @@ Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
             auto column_meta = block->ColumnChunk(j);
             int field_id = j + 1;
             if (null_value_counts.find(field_id) == null_value_counts.end()) {
-//                    LOG(WARNING) << "================null_value_counts============";
+//              LOG(WARNING) << "================null_value_counts============";
                 null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
             } else {
                 null_value_counts[field_id] += column_meta->statistics()->null_count();
