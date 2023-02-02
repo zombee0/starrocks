@@ -887,14 +887,39 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
         RETURN_IF_ERROR(Expr::open(partition_expr_ctxs, runtime_state));
 
         size_t desired_iceberg_sink_dop = request.pipeline_sink_dop();
-//        size_t source_operator_dop = fragment_ctx->pipelines().back()->source_operator_factory()->degree_of_parallelism();
+        size_t source_operator_dop = fragment_ctx->pipelines().back()->source_operator_factory()->degree_of_parallelism();
 
         OpFactoryPtr op = std::make_shared<IcebergTableSinkOperatorFactory>(
                 context->next_operator_id(), iceberg_table_sink->get_output_expr(), fragment_ctx, thrift_sink.iceberg_table_sink, partition_expr);
 
         if (partition_expr.empty()) {
-            LOG(WARNING) << "no partition, no local shuffle";
-            fragment_ctx->pipelines().back()->get_op_factories().emplace_back(std::move(op));
+            if (desired_iceberg_sink_dop == source_operator_dop) {
+                LOG(WARNING) << "no partition, no local shuffle";
+                fragment_ctx->pipelines().back()->get_op_factories().emplace_back(std::move(op));
+            } else {
+                LOG(WARNING) << "no partition, round robin local shuffle";
+                size_t max_row_count = 0;
+                auto* source_operator =
+                        down_cast<SourceOperatorFactory*>(fragment_ctx->pipelines().back()->get_op_factories()[0].get());
+                max_row_count += source_operator->degree_of_parallelism() * runtime_state->chunk_size();
+
+                auto pseudo_plan_node_id = context->next_pseudo_plan_node_id();
+                auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(
+                        max_row_count * PipelineBuilderContext::localExchangeBufferChunks());
+                auto local_exchange_source = std::make_shared<LocalExchangeSourceOperatorFactory>(
+                        context->next_operator_id(), pseudo_plan_node_id, mem_mgr);
+                local_exchange_source->set_runtime_state(runtime_state);
+                auto exchanger = std::make_shared<PassthroughExchanger>(mem_mgr, local_exchange_source.get());
+
+                auto local_exchange_sink = std::make_shared<LocalExchangeSinkOperatorFactory>(
+                        context->next_operator_id(), pseudo_plan_node_id, exchanger);
+                fragment_ctx->pipelines().back()->add_op_factory(local_exchange_sink);
+
+                OpFactories operator_source_with_local_exchange;
+                local_exchange_source->set_degree_of_parallelism(desired_iceberg_sink_dop);
+                operator_source_with_local_exchange.emplace_back(std::move(local_exchange_source));
+                operator_source_with_local_exchange.emplace_back(std::move(op));
+            }
         } else {
             auto pseudo_plan_node_id = context->next_pseudo_plan_node_id();
             auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(desired_iceberg_sink_dop * runtime_state->chunk_size() *

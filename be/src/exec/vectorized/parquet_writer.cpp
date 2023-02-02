@@ -25,14 +25,11 @@ namespace starrocks::vectorized {
     ParquetWriterWrap::ParquetWriterWrap(const TableInfo& tableInfo, const PartitionInfo& partitionInfo,
                                          const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile) :
     _output_expr_ctxs(output_expr_ctxs), _parent_profile(parent_profile) {
-        std::cout << "construct" << std::endl;
         init_parquet_writer(tableInfo, partitionInfo);
     }
 
     Status ParquetWriterWrap::init_parquet_writer(const TableInfo& tableInfo, const PartitionInfo& partitionInfo) {
-        std::cout << "init" << std::endl;
         ASSIGN_OR_RETURN(_fs, FileSystem::CreateSharedFromString(tableInfo._table_location));
-        std::cout << "fs done" << std::endl;
         _schema = tableInfo._schema;
         ::parquet::WriterProperties::Builder builder;
         if (tableInfo._enable_dictionary) {
@@ -75,7 +72,6 @@ namespace starrocks::vectorized {
             }
         }
         _properties = builder.build();
-        std::cout << "properties done" << std::endl;
         if (partitionInfo._column_names.size() != partitionInfo._column_values.size()) {
             return Status::InvalidArgument("columns and values are not matched in partitionInfo");
         }
@@ -84,7 +80,6 @@ namespace starrocks::vectorized {
         ss << "/data/";
         ss << partitionInfo.partition_dir();
         _partition_dir = ss.str();
-        // std::cout << _partition_dir << std::endl;
         return Status::OK();
     }
 
@@ -95,17 +90,12 @@ namespace starrocks::vectorized {
     }
 
     Status ParquetWriterWrap::new_file_writer() {
-        std::cout << "new file" << std::endl;
         std::string file_name = get_new_file_name();
-        std::cout << file_name << std::endl;
         WritableFileOptions options{.sync_on_close = false, .mode = FileSystem::CREATE_OR_OPEN_WITH_TRUNCATE};
         ASSIGN_OR_RETURN(auto writable_file, _fs->new_writable_file(options, file_name));
-        std::cout << "writable file done" << std::endl;
         _writer = std::make_shared<starrocks::parquet::FileWriter>(std::move(writable_file), file_name, _partition_dir,
                                                                    _properties, _schema, _output_expr_ctxs, _parent_profile);
-        std::cout << "file writer created  " << std::endl;
         auto st = _writer -> init();
-        std::cout << "file writer inited  " << std::endl;
         return st;
     }
 
@@ -113,7 +103,7 @@ namespace starrocks::vectorized {
         if (_writer == nullptr) {
             auto status = new_file_writer();
             if (!status.ok()) {
-                std::cout << status.detailed_message() << std::endl;
+                return status;
             }
         }
         // exceed file size

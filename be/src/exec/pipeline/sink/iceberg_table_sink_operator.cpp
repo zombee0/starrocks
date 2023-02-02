@@ -17,13 +17,13 @@
 namespace starrocks::pipeline {
 
 Status IcebergTableSinkOperator::prepare(RuntimeState* state) {
-//    LOG(WARNING) << "==========[prepare]==========";
+    LOG(WARNING) << "==========IcebergTableSinkOperator [prepare]==========";
     RETURN_IF_ERROR(Operator::prepare(state));
     return Status::OK();
 }
 
 void IcebergTableSinkOperator::close(RuntimeState* state) {
-//    LOG(WARNING) << "==========[close]=========";
+    LOG(WARNING) << "==========IcebergTableSinkOperator [close]=========";
 
     for (auto &i : _writers) {
         if (!i.second->closed()) {
@@ -39,7 +39,7 @@ void IcebergTableSinkOperator::close(RuntimeState* state) {
 }
 
 bool IcebergTableSinkOperator::need_input() const {
-//    LOG(WARNING) << "==========[need input]===============";
+    LOG(WARNING) << "==========IcebergTableSinkOperator [need input]===============";
     for (auto &i : _writers) {
         if (!i.second->writable()) {
 //            LOG(WARNING) << "==========[writable false]===============";
@@ -52,7 +52,7 @@ bool IcebergTableSinkOperator::need_input() const {
 }
 
 bool IcebergTableSinkOperator::is_finished() const {
-//    LOG(WARNING) << "===========[is_finished]==============";
+    LOG(WARNING) << "===========IcebergTableSinkOperator [is_finished]==============";
     if (_writers.size() == 0) {
 //        LOG(WARNING) << "===========[writer size is 0]==============";
 
@@ -70,7 +70,7 @@ bool IcebergTableSinkOperator::is_finished() const {
 }
 
 Status IcebergTableSinkOperator::set_finishing(RuntimeState* state) {
-//    LOG(WARNING) << "=============[set_finishing]============";
+    LOG(WARNING) << "=============IcebergTableSinkOperator [set_finishing]============";
 
     for (auto &i : _writers) {
         if (!i.second->closed()) {
@@ -88,13 +88,13 @@ Status IcebergTableSinkOperator::set_finishing(RuntimeState* state) {
 }
 
 bool IcebergTableSinkOperator::pending_finish() const {
-//    LOG(WARNING) << "=============[pending_finish]============";
+    LOG(WARNING) << "=============IcebergTableSinkOperator [pending_finish]============";
 
     return !is_finished();
 }
 
 Status IcebergTableSinkOperator::set_cancelled(RuntimeState* state) {
-    LOG(WARNING) << "============[set_cancelled]=============";
+    LOG(WARNING) << "============IcebergTableSinkOperator [set_cancelled]=============";
 
     return Status::OK();
 }
@@ -233,6 +233,7 @@ IcebergTableSinkOperatorFactory::IcebergTableSinkOperatorFactory(int32_t id, std
       _partition_output_expr(std::move(partition_output_expr)) {}
 
 Status IcebergTableSinkOperatorFactory::prepare(RuntimeState* state) {
+    LOG(WARNING) << "============IcebergTableSinkOperatorFactory [prepare]=============";
     RETURN_IF_ERROR(OperatorFactory::prepare(state));
     RETURN_IF_ERROR(Expr::create_expr_trees(state->obj_pool(), _t_output_expr, &_output_expr_ctxs, state));
     RETURN_IF_ERROR(Expr::prepare(_output_expr_ctxs, state));
@@ -335,6 +336,7 @@ void IcebergTableSinkOperatorFactory::build_schema_repetition_type(
 }
 
 void IcebergTableSinkOperatorFactory::close(RuntimeState* state) {
+    LOG(WARNING) << "============IcebergTableSinkOperatorFactory [close]=============";
     Expr::close(_output_expr_ctxs, state);
     OperatorFactory::close(state);
     LOG(WARNING) << "===========[iceberg sink operator factory close]==============";

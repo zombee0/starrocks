@@ -199,11 +199,15 @@ public class InsertPlanner {
                     // If you want to set tablet sink dop > 1, please enable single tablet loading and disable shuffle service
                     sinkFragment.setPipelineDop(1);
                 } else {
-                    if (ConnectContext.get().getSessionVariable().getEnableAdaptiveSinkDop()) {
-                        sinkFragment.setPipelineDop(ConnectContext.get().getSessionVariable().getDegreeOfParallelism());
+                    if (insertStmt.getTargetTable() instanceof IcebergTable) {
+                        sinkFragment.setPipelineDop(ConnectContext.get().getSessionVariable().getPipelineSinkDop());
                     } else {
-                        sinkFragment
-                                .setPipelineDop(ConnectContext.get().getSessionVariable().getParallelExecInstanceNum());
+                        if (ConnectContext.get().getSessionVariable().getEnableAdaptiveSinkDop()) {
+                            sinkFragment.setPipelineDop(ConnectContext.get().getSessionVariable().getDegreeOfParallelism());
+                        } else {
+                            sinkFragment
+                                    .setPipelineDop(ConnectContext.get().getSessionVariable().getParallelExecInstanceNum());
+                        }
                     }
                 }
                 sinkFragment.setHasOlapTableSink();

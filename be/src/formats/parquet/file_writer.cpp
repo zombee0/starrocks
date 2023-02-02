@@ -29,7 +29,6 @@ namespace starrocks::parquet {
 ParquetOutputStream::ParquetOutputStream(std::unique_ptr<starrocks::WritableFile> wfile)
         : _wfile(std::move(wfile)) {
     set_mode(arrow::io::FileMode::WRITE);
-    std::cout << "output stream create" << std::endl;
 }
 
 ParquetOutputStream::~ParquetOutputStream() {
@@ -48,10 +47,7 @@ arrow::Status ParquetOutputStream::Write(const void* data, int64_t nbytes) {
     if (_is_closed) {
         return arrow::Status::OK();
     }
-    LOG(WARNING) << "write data, length: " << nbytes;
     const char* ch = reinterpret_cast<const char*>(data);
-    LOG(WARNING) << "write data, data: " << int(uint8(ch[0])) <<" "<< int(uint8(ch[1])) << " "
-        << int(uint8(ch[2])) << " " << int(uint8(ch[3]));
 
     if (_header_state == INITED) {
         _header_state = CACHED;

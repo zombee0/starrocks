@@ -337,7 +337,6 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
             .add(DISABLE_BUCKET_JOIN)
             .add(CBO_ENABLE_REPLICATED_JOIN)
             .add(FOREIGN_KEY_CHECKS)
-            .add(PIPELINE_SINK_DOP)
             .add("enable_cbo")
             .add("enable_vectorized_engine")
             .add("vectorized_engine_enable")
@@ -709,6 +708,9 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
     @VariableMgr.VarAttr(name = ENABLE_ADAPTIVE_SINK_DOP)
     private boolean enableAdaptiveSinkDop = false;
 
+    @VariableMgr.VarAttr(name = PIPELINE_SINK_DOP)
+    private int pipelineSinkDop = 8;
+
     @VariableMgr.VarAttr(name = JOIN_IMPLEMENTATION_MODE_V2, alias = JOIN_IMPLEMENTATION_MODE)
     private String joinImplementationMode = "auto"; // auto, merge, hash, nestloop
 
@@ -879,6 +881,14 @@ public class SessionVariable implements Serializable, Writable, Cloneable {
 
     public void setEnableAdaptiveSinkDop(boolean e) {
         this.enableAdaptiveSinkDop = e;
+    }
+
+    public int getPipelineSinkDop() {
+        return this.pipelineSinkDop;
+    }
+
+    public void setPipelineSinkDop(int sinkDop) {
+        this.pipelineSinkDop = sinkDop;
     }
 
     public long getMaxExecMemByte() {
