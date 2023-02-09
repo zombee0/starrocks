@@ -87,15 +87,9 @@ namespace starrocks::parquet {
         size_t get_written_bytes();
         Status splitOffsets(std::vector<int64_t> &splitOffsets);
         std::size_t file_size();
-        //std::string filename() {
-        //    std::string name;
-        //    name.assign(_outstream->filename());
-        //    return name;
-        //}
 
     private:
-        ::parquet::RowGroupWriter* get_rg_writer();
-        void _check_size();
+        ::parquet::RowGroupWriter* _get_rg_writer();
         void _rg_writer_close();
 
         std::shared_ptr<ParquetOutputStream> _outstream;

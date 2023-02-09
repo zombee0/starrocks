@@ -101,7 +101,6 @@ namespace starrocks::vectorized {
         std::shared_ptr<::parquet::schema::GroupNode> _schema;
         std::string _partition_dir;
         int32_t _cnt = 0;
-        std::vector<std::shared_ptr<::parquet::FileMetaData>> _metadatas;
         std::string _location;
         std::vector<std::shared_ptr<starrocks::parquet::FileWriter>> _pending_commits;
         int64_t _max_file_size = 512 * 1024 * 1024; // 1024 * 1024 * 1024;

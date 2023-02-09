@@ -120,16 +120,13 @@ namespace starrocks::vectorized {
 
     Status ParquetWriterWrap::close_current_writer(RuntimeState* state) {
         LOG(WARNING) << "close file: " << _location;
-        std::shared_ptr<starrocks::parquet::FileWriter> cur_writer = _writer;
-        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([cur_writer, state]() {
-            cur_writer->close(state);
-        });
-        if (ret) {
+        Status st = _writer->close(state);
+        if (st.ok()) {
 //            LOG(WARNING) << "put pending commit writer ====================";
             _pending_commits.emplace_back(_writer);
             return Status::OK();
         } else {
-            return Status::IOError("submit close file error!");
+            return Status::IOError( "close file error!");
         }
 
     }
@@ -154,8 +151,6 @@ namespace starrocks::vectorized {
                 //dataFile.partition_path = _partition_dir;
                 //dataFile.path = writer->filename();
                 // _data_files.emplace_back(dataFile);
-
-                _metadatas.emplace_back(writer->metadata());
                 writer = nullptr;
             }
             if (writer != nullptr && (!writer->closed())) {

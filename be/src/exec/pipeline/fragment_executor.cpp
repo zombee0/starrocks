@@ -900,9 +900,7 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
                 LOG(WARNING) << "no partition, round robin local shuffle, desired_iceberg_sink_dop: " << desired_iceberg_sink_dop <<
                              ", source_operator_dop: " << source_operator_dop;
                 size_t max_row_count = 0;
-                auto* source_operator =
-                        down_cast<SourceOperatorFactory*>(fragment_ctx->pipelines().back()->get_op_factories()[0].get());
-                max_row_count += source_operator->degree_of_parallelism() * runtime_state->chunk_size();
+                max_row_count += source_operator_dop * runtime_state->chunk_size();
 
                 auto pseudo_plan_node_id = context->next_pseudo_plan_node_id();
                 auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(
@@ -929,7 +927,7 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
             LOG(WARNING) << "partition, hash local shuffle, desired_iceberg_sink_dop: " << desired_iceberg_sink_dop <<
                          ", source_operator_dop: " << source_operator_dop;
             auto pseudo_plan_node_id = context->next_pseudo_plan_node_id();
-            auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(desired_iceberg_sink_dop * runtime_state->chunk_size() *
+            auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(source_operator_dop * runtime_state->chunk_size() *
                                                                         context->localExchangeBufferChunks());
             auto local_shuffle_source =
                     std::make_shared<LocalExchangeSourceOperatorFactory>(context->next_operator_id(), pseudo_plan_node_id, mem_mgr);
