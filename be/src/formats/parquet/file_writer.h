@@ -113,6 +113,7 @@ namespace starrocks::parquet {
         std::vector<ExprContext*> _output_expr_ctxs;
         RuntimeProfile* _parent_profile;
         RuntimeProfile::Counter* _rg_close_counter = nullptr;
+        RuntimeProfile::Counter* _io_timer = nullptr;
         std::vector<int64_t> _buffered_values_estimate;
         int64_t _total_row_group_writen_bytes{0};
         std::condition_variable _cv;

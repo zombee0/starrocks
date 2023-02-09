@@ -55,7 +55,7 @@ namespace starrocks::vectorized {
     struct TableInfo {
         std::string _table_location;
         std::string _file_format;
-        tparquet::CompressionCodec::type _compress_type = tparquet::CompressionCodec::GZIP;
+        tparquet::CompressionCodec::type _compress_type = tparquet::CompressionCodec::UNCOMPRESSED;
         bool _enable_dictionary = true;
 
         std::shared_ptr<::parquet::schema::GroupNode> _schema;;

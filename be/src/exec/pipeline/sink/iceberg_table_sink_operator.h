@@ -75,7 +75,7 @@ private:
     FragmentContext* _fragment_ctx = nullptr;
     std::vector<ExprContext*> _output_expr_ctxs;
     std::vector<ExprContext*> _partition_expr_ctxs;
-    std::unordered_map<std::string, starrocks::vectorized::ParquetWriterWrap*> _writers;
+    std::unordered_map<std::string, std::unique_ptr<starrocks::vectorized::ParquetWriterWrap>> _writers;
     std::atomic<bool> _is_finished = false;
 };
 

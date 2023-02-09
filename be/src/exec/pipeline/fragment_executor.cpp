@@ -894,10 +894,11 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
 
         if (partition_expr.empty()) {
             if (desired_iceberg_sink_dop == source_operator_dop) {
-                LOG(WARNING) << "no partition, no local shuffle";
+                LOG(WARNING) << "no partition, no local shuffle, desired_iceberg_sink_dop: " << desired_iceberg_sink_dop;
                 fragment_ctx->pipelines().back()->get_op_factories().emplace_back(std::move(op));
             } else {
-                LOG(WARNING) << "no partition, round robin local shuffle";
+                LOG(WARNING) << "no partition, round robin local shuffle, desired_iceberg_sink_dop: " << desired_iceberg_sink_dop <<
+                             ", source_operator_dop: " << source_operator_dop;
                 size_t max_row_count = 0;
                 auto* source_operator =
                         down_cast<SourceOperatorFactory*>(fragment_ctx->pipelines().back()->get_op_factories()[0].get());
@@ -919,8 +920,14 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
                 local_exchange_source->set_degree_of_parallelism(desired_iceberg_sink_dop);
                 operator_source_with_local_exchange.emplace_back(std::move(local_exchange_source));
                 operator_source_with_local_exchange.emplace_back(std::move(op));
+
+                auto pipeline_with_local_exchange_source =
+                        std::make_shared<Pipeline>(context->next_pipe_id(), operator_source_with_local_exchange);
+                fragment_ctx->pipelines().emplace_back(std::move(pipeline_with_local_exchange_source));
             }
         } else {
+            LOG(WARNING) << "partition, hash local shuffle, desired_iceberg_sink_dop: " << desired_iceberg_sink_dop <<
+                         ", source_operator_dop: " << source_operator_dop;
             auto pseudo_plan_node_id = context->next_pseudo_plan_node_id();
             auto mem_mgr = std::make_shared<LocalExchangeMemoryManager>(desired_iceberg_sink_dop * runtime_state->chunk_size() *
                                                                         context->localExchangeBufferChunks());
@@ -930,7 +937,7 @@ Status FragmentExecutor::_decompose_data_sink_to_operator(RuntimeState* runtime_
             OpFactories& pred_operators = fragment_ctx->pipelines().back()->get_op_factories();
             auto local_shuffle =
                     std::make_shared<PartitionExchanger>(mem_mgr, local_shuffle_source.get(), TPartitionType::type::HASH_PARTITIONED, partition_expr_ctxs,
-                                                         desired_iceberg_sink_dop);
+                                                         source_operator_dop);
 
             // Append local shuffle sink to the tail of the current pipeline, which comes to end.
             auto local_shuffle_sink =

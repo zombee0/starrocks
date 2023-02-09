@@ -56,7 +56,10 @@ public:
 
     void local_exchange_shuffle(std::vector<uint32_t>& shuffle_channel_ids, std::vector<uint32_t>& hash_values,
                                 size_t num_rows) {
-        (this->*_local_exchange_shuffle)(shuffle_channel_ids, hash_values, num_rows);
+        //(this->*_local_exchange_shuffle)(shuffle_channel_ids, hash_values, num_rows);
+        for (size_t i = 0; i < num_rows; ++i) {
+            shuffle_channel_ids[i] = hash_values[i] % _num_channels;
+        }
     }
 
 private:

@@ -102,6 +102,7 @@ FileWriter::FileWriter(std::unique_ptr<WritableFile> writable_file, std::string 
     _outstream = std::make_shared<ParquetOutputStream>(std::move(writable_file));
     _buffered_values_estimate.reserve(_schema->field_count());
     _rg_close_counter = ADD_COUNTER(_parent_profile, "RowGroupWriterCloseCounter", TUnit::UNIT);
+    _io_timer = ADD_TIMER(_parent_profile, "FileWriterIoTimer");
 }
 
 ::parquet::RowGroupWriter* FileWriter::get_rg_writer() {
@@ -155,9 +156,23 @@ Status FileWriter::write(vectorized::Chunk* chunk) {
         return Status::OK();
     }
 
+    vectorized::Columns result_columns;
+    // Step 1: compute expr
+    int num_columns = _output_expr_ctxs.size();
+    result_columns.reserve(num_columns);
+
+    for (int i = 0; i < num_columns; ++i) {
+        ASSIGN_OR_RETURN(ColumnPtr column, _output_expr_ctxs[i]->evaluate(chunk));
+        //column = _output_expr_ctxs[i]->root()->type().type == TYPE_TIME
+        //         ? vectorized::ColumnHelper::convert_time_column_from_double_to_str(column)
+        //         : column;
+        result_columns.emplace_back(std::move(column));
+    }
+
     size_t num_rows = chunk->num_rows();
-    for (size_t i = 0; i < chunk->num_columns(); i++) {
-        auto &col = chunk->get_column_by_index(i);
+    for (size_t i = 0; i < result_columns.size(); i++) {
+        // auto &col = chunk->get_column_by_index(i);
+        auto &col = result_columns[i];
         bool nullable = col->is_nullable();
         auto null_column = nullable && down_cast<starrocks::vectorized::NullableColumn *>(col.get())->has_null()
                            ? down_cast<starrocks::vectorized::NullableColumn *>(col.get())->null_column()
@@ -241,6 +256,7 @@ void FileWriter::_check_size() {
 }
 
 void FileWriter::_rg_writer_close() {
+    SCOPED_TIMER(_io_timer);
     _rg_writer->Close();
     _total_row_group_writen_bytes = _outstream->get_written_len();
     _total_rows += _cur_written_rows;
@@ -313,6 +329,7 @@ Status FileWriter::close(RuntimeState* state) {
         //if (_rg_writer != nullptr) {
         //    _rg_writer_close();
         //}
+        SCOPED_TIMER(_io_timer);
         LOG(WARNING) << "closing " << _file_name;
         _writer->Close();
         LOG(WARNING) << "closed " << _file_name;

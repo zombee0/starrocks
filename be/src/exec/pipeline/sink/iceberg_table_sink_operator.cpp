@@ -17,13 +17,13 @@
 namespace starrocks::pipeline {
 
 Status IcebergTableSinkOperator::prepare(RuntimeState* state) {
-    LOG(WARNING) << "==========IcebergTableSinkOperator [prepare]==========";
+//    LOG(WARNING) << "==========IcebergTableSinkOperator [prepare]==========";
     RETURN_IF_ERROR(Operator::prepare(state));
     return Status::OK();
 }
 
 void IcebergTableSinkOperator::close(RuntimeState* state) {
-    LOG(WARNING) << "==========IcebergTableSinkOperator [close]=========";
+//    LOG(WARNING) << "==========IcebergTableSinkOperator [close]=========";
 
     for (auto &i : _writers) {
         if (!i.second->closed()) {
@@ -39,7 +39,7 @@ void IcebergTableSinkOperator::close(RuntimeState* state) {
 }
 
 bool IcebergTableSinkOperator::need_input() const {
-    LOG(WARNING) << "==========IcebergTableSinkOperator [need input]===============";
+//    LOG(WARNING) << "==========IcebergTableSinkOperator [need input]===============";
     for (auto &i : _writers) {
         if (!i.second->writable()) {
 //            LOG(WARNING) << "==========[writable false]===============";
@@ -52,7 +52,7 @@ bool IcebergTableSinkOperator::need_input() const {
 }
 
 bool IcebergTableSinkOperator::is_finished() const {
-    LOG(WARNING) << "===========IcebergTableSinkOperator [is_finished]==============";
+//    LOG(WARNING) << "===========IcebergTableSinkOperator [is_finished]==============";
     if (_writers.size() == 0) {
 //        LOG(WARNING) << "===========[writer size is 0]==============";
 
@@ -70,7 +70,7 @@ bool IcebergTableSinkOperator::is_finished() const {
 }
 
 Status IcebergTableSinkOperator::set_finishing(RuntimeState* state) {
-    LOG(WARNING) << "=============IcebergTableSinkOperator [set_finishing]============";
+//    LOG(WARNING) << "=============IcebergTableSinkOperator [set_finishing]============";
 
     for (auto &i : _writers) {
         if (!i.second->closed()) {
@@ -88,13 +88,13 @@ Status IcebergTableSinkOperator::set_finishing(RuntimeState* state) {
 }
 
 bool IcebergTableSinkOperator::pending_finish() const {
-    LOG(WARNING) << "=============IcebergTableSinkOperator [pending_finish]============";
+//    LOG(WARNING) << "=============IcebergTableSinkOperator [pending_finish]============";
 
     return !is_finished();
 }
 
 Status IcebergTableSinkOperator::set_cancelled(RuntimeState* state) {
-    LOG(WARNING) << "============IcebergTableSinkOperator [set_cancelled]=============";
+//    LOG(WARNING) << "============IcebergTableSinkOperator [set_cancelled]=============";
 
     return Status::OK();
 }
@@ -111,8 +111,8 @@ Status IcebergTableSinkOperator::push_chunk(RuntimeState* state, const vectorize
             tableInfo._file_format = _file_format;
             tableInfo._schema = _schema;
             starrocks::vectorized::PartitionInfo partitionInfo;
-            auto writer = new vectorized::ParquetWriterWrap(tableInfo, partitionInfo, _output_expr_ctxs, _common_metrics.get());
-            _writers.insert({"", writer});
+            auto writer = std::make_unique<vectorized::ParquetWriterWrap>(tableInfo, partitionInfo, _output_expr_ctxs, _common_metrics.get());
+            _writers.insert(std::make_pair("", std::move(writer)));
             LOG(WARNING) << "==========[insert writer on [" << "" << "]===============";
         }
         _writers[""]->append_chunk(chunk.get(), state);
@@ -191,8 +191,8 @@ Status IcebergTableSinkOperator::push_chunk(RuntimeState* state, const vectorize
             tableInfo._file_format = _file_format;
             tableInfo._schema = _schema;
             starrocks::vectorized::PartitionInfo partitionInfo = {partition_column_names, keys};
-            auto writer = new vectorized::ParquetWriterWrap(tableInfo, partitionInfo, _output_expr_ctxs, _common_metrics.get());
-            _writers.insert({key, writer});
+            auto writer = std::make_unique<vectorized::ParquetWriterWrap>(tableInfo, partitionInfo, _output_expr_ctxs, _common_metrics.get());
+            _writers.insert(std::make_pair(key, std::move(writer)));
             LOG(WARNING) << "==========[insert writer on [" << key << "]===============";
 
         }

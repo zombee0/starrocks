@@ -39,7 +39,9 @@ Status PartitionExchanger::Partitioner::partition_chunk(const vectorized::ChunkP
     if (_part_type == TPartitionType::HASH_PARTITIONED) {
         _hash_values.assign(num_rows, HashUtil::FNV_SEED);
         for (const vectorized::ColumnPtr& column : _partitions_columns) {
-            column->fnv_hash(&_hash_values[0], 0, num_rows);
+            auto data_column = reinterpret_cast<const vectorized::NullableColumn *>(column.get())->data_column();
+            memcpy(&_hash_values[0], reinterpret_cast<const vectorized::Int32Column *>(data_column.get())->get_data().data(), num_rows * sizeof(int32));
+            // column->fnv_hash(&_hash_values[0], 0, num_rows);
         }
     } else {
         // The data distribution was calculated using CRC32_HASH,
@@ -53,6 +55,7 @@ Status PartitionExchanger::Partitioner::partition_chunk(const vectorized::ChunkP
     _shuffle_channel_id.resize(num_rows);
 
     _shuffler->local_exchange_shuffle(_shuffle_channel_id, _hash_values, num_rows);
+    // memcpy(_shuffle_channel_id.data(), _hash_values.data(), num_rows * sizeof(int32));
 
     _partition_row_indexes_start_points.assign(num_partitions + 1, 0);
     for (size_t i = 0; i < num_rows; ++i) {

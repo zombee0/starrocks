@@ -200,7 +200,7 @@ public class InsertPlanner {
                     sinkFragment.setPipelineDop(1);
                 } else {
                     if (insertStmt.getTargetTable() instanceof IcebergTable) {
-                        sinkFragment.setPipelineDop(ConnectContext.get().getSessionVariable().getPipelineSinkDop());
+                        sinkFragment.setHasIcebergTableSink();
                     } else {
                         if (ConnectContext.get().getSessionVariable().getEnableAdaptiveSinkDop()) {
                             sinkFragment.setPipelineDop(ConnectContext.get().getSessionVariable().getDegreeOfParallelism());
@@ -208,9 +208,10 @@ public class InsertPlanner {
                             sinkFragment
                                     .setPipelineDop(ConnectContext.get().getSessionVariable().getParallelExecInstanceNum());
                         }
+                        sinkFragment.setHasOlapTableSink();
                     }
                 }
-                sinkFragment.setHasOlapTableSink();
+
                 sinkFragment.setForceSetTableSinkDop();
                 sinkFragment.setForceAssignScanRangesPerDriverSeq();
             }

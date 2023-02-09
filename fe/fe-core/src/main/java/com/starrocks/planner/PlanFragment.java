@@ -44,7 +44,6 @@ import com.starrocks.common.TreeNode;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.optimizer.statistics.ColumnDict;
-import com.starrocks.system.BackendCoreStat;
 import com.starrocks.thrift.TCacheParam;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TGlobalDict;
@@ -154,6 +153,7 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     private TCacheParam cacheParam = null;
     private boolean hasOlapTableSink = false;
+    private boolean hasIcebergTableSink = false;
     private boolean forceSetTableSinkDop = false;
     private boolean forceAssignScanRangesPerDriverSeq = false;
 
@@ -239,6 +239,14 @@ public class PlanFragment extends TreeNode<PlanFragment> {
 
     public void setHasOlapTableSink() {
         this.hasOlapTableSink = true;
+    }
+
+    public boolean hasIcebergTableSink() {
+        return this.hasIcebergTableSink;
+    }
+
+    public void setHasIcebergTableSink() {
+        this.hasIcebergTableSink = true;
     }
 
     public boolean forceSetTableSinkDop() {

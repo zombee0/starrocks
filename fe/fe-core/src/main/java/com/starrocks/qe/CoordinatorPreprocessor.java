@@ -1468,7 +1468,7 @@ public class CoordinatorPreprocessor {
                 throws Exception {
             // if pipeline is enable and current fragment contain olap table sink, in fe we will
             // calculate the number of all tablet sinks in advance and assign them to each fragment instance
-            boolean enablePipelineTableSinkDop = enablePipelineEngine && fragment.hasOlapTableSink();
+            boolean enablePipelineTableSinkDop = enablePipelineEngine && (fragment.hasOlapTableSink() || fragment.hasIcebergTableSink());
 
             uniqueParams.setProtocol_version(InternalServiceVersion.V1);
             uniqueParams.setBackend_num(instanceExecParam.backendNum);
@@ -1580,7 +1580,7 @@ public class CoordinatorPreprocessor {
                 }
                 int curTabletSinkDop = 0;
                 if (forceSetTableSinkDop) {
-                    curTabletSinkDop = fragment.getPipelineDop();
+                    curTabletSinkDop = ConnectContext.get().getSessionVariable().getPipelineSinkDop();
                 } else {
                     curTabletSinkDop = instanceExecParam.getPipelineDop();
                 }
@@ -1618,7 +1618,7 @@ public class CoordinatorPreprocessor {
                 }
                 int curTabletSinkDop = 0;
                 if (forceSetTableSinkDop) {
-                    curTabletSinkDop = fragment.getPipelineDop();
+                    curTabletSinkDop = ConnectContext.get().getSessionVariable().getPipelineSinkDop();
                 } else {
                     curTabletSinkDop = instanceExecParam.getPipelineDop();
                 }
