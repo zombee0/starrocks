@@ -314,7 +314,7 @@ namespace starrocks::parquet {
     // total_compressed_types: total bytes still compressed but not written
     // estimated_bytes: estimated size of all column chunk uncompressed values that are not written to a page yet. it
     // mainly includes value buffer size and repetition buffer size and definition buffer value for each column.
-    std::size_t FileWriterBase::_get_current_rg_written_bytes() {
+    std::size_t FileWriterBase::_get_current_rg_written_bytes() const {
         if (_rg_writer == nullptr) {
             return 0;
         }
@@ -324,12 +324,30 @@ namespace starrocks::parquet {
         return _rg_writer->total_bytes_written() + _rg_writer->total_compressed_bytes() + estimated_bytes;
     }
 
-    std::size_t FileWriterBase::file_size() {
+    std::size_t FileWriterBase::file_size() const {
         DCHECK(_outstream != nullptr);
         return _outstream->Tell().MoveValueUnsafe() + _get_current_rg_written_bytes();
     }
 
-
+    Status FileWriterBase::split_offsets(std::vector<int64_t>& splitOffsets) const {
+        LOG(WARNING) << "In splitOffsets";
+        if (closed()) {
+            LOG(WARNING) << "file closed";
+        }
+        if (_file_metadata.get() == nullptr) {
+            LOG(WARNING) << "file metadata null";
+        }
+        for (int i = 0; i < _file_metadata->num_row_groups(); i++) {
+            LOG(WARNING) << "======row group======:  " << i;
+            auto first_column_meta = _file_metadata->RowGroup(i)->ColumnChunk(0);
+            int64_t dict_page_offset = first_column_meta->dictionary_page_offset();
+            int64_t first_data_page_offset = first_column_meta->data_page_offset();
+            int64_t split_offset = dict_page_offset > 0 && dict_page_offset < first_data_page_offset ? dict_page_offset
+                                                                                                     : first_data_page_offset;
+            splitOffsets.emplace_back(split_offset);
+        }
+        return Status::OK();
+    }
 
     void SyncFileWriter::_flush_row_group() {
         _rg_writer->Close();
@@ -388,7 +406,7 @@ namespace starrocks::parquet {
         }
     }
 
-    Status AsyncFileWriter::close(RuntimeState* state) {
+    Status AsyncFileWriter::close(RuntimeState* state, std::function<void(starrocks::parquet::AsyncFileWriter*, RuntimeState*)> cb) {
         bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&, state]() {
             {
                 auto lock = std::unique_lock(_m);
@@ -399,9 +417,9 @@ namespace starrocks::parquet {
             _rg_writer = nullptr;
             _file_metadata = _writer->metadata();
             auto st = _outstream->Close();
-            //TIcebergDataFile dataFile;
-            //buildIcebergDataFile(dataFile);
-            //state->add_iceberg_data_file(dataFile);
+            if (cb != nullptr) {
+                cb(this, state);
+            }
             _closed.store(true);
         });
         if (ret) {
@@ -409,93 +427,6 @@ namespace starrocks::parquet {
         } else {
             return Status::InternalError("Submit close file error");
         }
-    }
-
-    Status AsyncFileWriter::_build_iceberg_datafile(TIcebergDataFile& dataFile) {
-        dataFile.partition_path = _file_dir;
-        dataFile.path = _file_name;
-        dataFile.format = "parquet";
-        dataFile.record_count = _file_metadata->num_rows();
-        dataFile.file_size_in_bytes = _outstream->Tell().MoveValueUnsafe();
-        std::vector<int64_t> split_offsets;
-        LOG(WARNING) << "go to splitOffsets";
-        _split_offsets(split_offsets);
-        dataFile.split_offsets = split_offsets;
-
-        std::unordered_map<int32_t, int64_t> column_sizes;
-        std::unordered_map<int32_t, int64_t> value_counts;
-        std::unordered_map<int32_t, int64_t> null_value_counts;
-        std::unordered_map<int32_t, std::string> min_values;
-        std::unordered_map<int32_t, std::string> max_values;
-
-        for (int i = 0; i < _file_metadata->num_row_groups(); ++i) {
-            auto block = _file_metadata->RowGroup(i);
-            for (int j = 0; j < block->num_columns(); j++) {
-                auto column_meta = block->ColumnChunk(j);
-                int field_id = j + 1;
-                if (null_value_counts.find(field_id) == null_value_counts.end()) {
-//              LOG(WARNING) << "================null_value_counts============";
-                    null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
-                } else {
-                    null_value_counts[field_id] += column_meta->statistics()->null_count();
-                }
-
-                if (column_sizes.find(field_id) == column_sizes.end()) {
-                    column_sizes.insert({field_id, column_meta->total_compressed_size()});
-                } else {
-                    column_sizes[field_id] += column_meta->total_compressed_size();
-                }
-
-                if (value_counts.find(field_id) == value_counts.end()) {
-                    value_counts.insert({field_id, column_meta->num_values()});
-                } else {
-                    value_counts[field_id] += column_meta->num_values();
-                }
-
-                min_values[field_id] = column_meta->statistics()->EncodeMin();
-                max_values[field_id] = column_meta->statistics()->EncodeMax();
-            }
-        }
-
-        TIcebergColumnStats stats;
-        for(auto& i : column_sizes) {
-            stats.columnSizes.insert({i.first, i.second});
-        }
-        for(auto& i : value_counts) {
-            stats.valueCounts.insert({i.first, i.second});
-        }
-        for(auto& i : null_value_counts) {
-            stats.nullValueCounts.insert({i.first, i.second});
-        }
-        for(auto& i : min_values) {
-            stats.lowerBounds.insert({i.first, i.second});
-        }
-        for(auto& i : max_values) {
-            stats.upperBounds.insert({i.first, i.second});
-        }
-
-        dataFile.column_stats = stats;
-        return Status::OK();
-    }
-
-    Status AsyncFileWriter::_split_offsets(std::vector<int64_t>& splitOffsets) {
-        LOG(WARNING) << "In splitOffsets";
-        if (closed()) {
-            LOG(WARNING) << "file closed";
-        }
-        if (_file_metadata.get() == nullptr) {
-            LOG(WARNING) << "file metadata null";
-        }
-        for (int i = 0; i < _file_metadata->num_row_groups(); i++) {
-            LOG(WARNING) << "======row group======:  " << i;
-            auto first_column_meta = _file_metadata->RowGroup(i)->ColumnChunk(0);
-            int64_t dict_page_offset = first_column_meta->dictionary_page_offset();
-            int64_t first_data_page_offset = first_column_meta->data_page_offset();
-            int64_t split_offset = dict_page_offset > 0 && dict_page_offset < first_data_page_offset ? dict_page_offset
-                                                                                                     : first_data_page_offset;
-            splitOffsets.emplace_back(split_offset);
-        }
-        return Status::OK();
     }
 
 } // namespace starrocks::parquet

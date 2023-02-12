@@ -88,7 +88,7 @@ namespace starrocks::vectorized {
 
     Status ParquetWriterWrap::close_current_writer(RuntimeState* state) {
         LOG(WARNING) << "close file: " << _location;
-        Status st = _writer->close(state);
+        Status st = _writer->close(state, add_iceberg_commit_info);
         if (st.ok()) {
 //            LOG(WARNING) << "put pending commit writer ====================";
             _pending_commits.emplace_back(_writer);
@@ -132,6 +132,77 @@ namespace starrocks::vectorized {
         }
 
         return true;
+    }
+
+    void ParquetWriterWrap::add_iceberg_commit_info(starrocks::parquet::AsyncFileWriter* writer, RuntimeState* state) {
+        TIcebergDataFile dataFile;
+        dataFile.partition_path = writer->partition_dir();
+        dataFile.path = writer->file_name();
+        dataFile.format = "parquet";
+        dataFile.record_count = writer->metadata()->num_rows();
+        dataFile.file_size_in_bytes = writer->file_size();
+        std::vector<int64_t> split_offsets;
+        LOG(WARNING) << "go to splitOffsets";
+        writer->split_offsets(split_offsets);
+        dataFile.split_offsets = split_offsets;
+
+        std::unordered_map<int32_t, int64_t> column_sizes;
+        std::unordered_map<int32_t, int64_t> value_counts;
+        std::unordered_map<int32_t, int64_t> null_value_counts;
+        std::unordered_map<int32_t, std::string> min_values;
+        std::unordered_map<int32_t, std::string> max_values;
+
+        const auto& metadata = writer->metadata();
+
+        for (int i = 0; i < metadata->num_row_groups(); ++i) {
+            auto block = metadata->RowGroup(i);
+            for (int j = 0; j < block->num_columns(); j++) {
+                auto column_meta = block->ColumnChunk(j);
+                int field_id = j + 1;
+                if (null_value_counts.find(field_id) == null_value_counts.end()) {
+//              LOG(WARNING) << "================null_value_counts============";
+                    null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
+                } else {
+                    null_value_counts[field_id] += column_meta->statistics()->null_count();
+                }
+
+                if (column_sizes.find(field_id) == column_sizes.end()) {
+                    column_sizes.insert({field_id, column_meta->total_compressed_size()});
+                } else {
+                    column_sizes[field_id] += column_meta->total_compressed_size();
+                }
+
+                if (value_counts.find(field_id) == value_counts.end()) {
+                    value_counts.insert({field_id, column_meta->num_values()});
+                } else {
+                    value_counts[field_id] += column_meta->num_values();
+                }
+
+                min_values[field_id] = column_meta->statistics()->EncodeMin();
+                max_values[field_id] = column_meta->statistics()->EncodeMax();
+            }
+        }
+
+        TIcebergColumnStats stats;
+        for(auto& i : column_sizes) {
+            stats.columnSizes.insert({i.first, i.second});
+        }
+        for(auto& i : value_counts) {
+            stats.valueCounts.insert({i.first, i.second});
+        }
+        for(auto& i : null_value_counts) {
+            stats.nullValueCounts.insert({i.first, i.second});
+        }
+        for(auto& i : min_values) {
+            stats.lowerBounds.insert({i.first, i.second});
+        }
+        for(auto& i : max_values) {
+            stats.upperBounds.insert({i.first, i.second});
+        }
+
+        dataFile.column_stats = stats;
+
+        state->add_iceberg_data_file(dataFile);
     }
 
 } // starrocks::vectorized

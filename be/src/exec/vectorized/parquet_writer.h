@@ -76,6 +76,7 @@ namespace starrocks::vectorized {
         bool writable() { return _writer == nullptr || _writer->writable(); }
         bool closed();
         // std::vector<TIcebergDataFile> _data_files;
+        static void add_iceberg_commit_info(starrocks::parquet::AsyncFileWriter* writer, RuntimeState* state);
 
     private:
         std::string get_new_file_name();

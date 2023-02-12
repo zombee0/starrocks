@@ -77,17 +77,20 @@ namespace starrocks::parquet {
 
         Status init();
         Status write(vectorized::Chunk* chunk);
-        std::size_t file_size();
-        void set_max_rog_group_size(int64_t rg_size) { _max_row_group_size = rg_size; }
+        std::size_t file_size() const;
+        void set_max_row_group_size(int64_t rg_size) { _max_row_group_size = rg_size; }
 
         std::shared_ptr<::parquet::FileMetaData> metadata() const { return _file_metadata; }
+
+        Status split_offsets(std::vector<int64_t> &splitOffsets) const;
+        virtual bool closed() const = 0;
 
     protected:
         virtual void _flush_row_group() = 0;
 
     private:
         ::parquet::RowGroupWriter* _get_rg_writer();
-        std::size_t _get_current_rg_written_bytes();
+        std::size_t _get_current_rg_written_bytes() const;
 
     protected:
         std::shared_ptr<ParquetOutputStream> _outstream;
@@ -110,6 +113,7 @@ namespace starrocks::parquet {
         ~SyncFileWriter() = default;
 
         Status close();
+        bool closed() const override { return _closed; }
 
     private:
         void _flush_row_group() override;
@@ -124,20 +128,26 @@ namespace starrocks::parquet {
 
         ~AsyncFileWriter() = default;
 
-        Status close(RuntimeState* state);
+        Status close(RuntimeState* state, std::function<void(starrocks::parquet::AsyncFileWriter*, RuntimeState*)> cb = nullptr);
 
         bool writable() {
             auto lock = std::unique_lock(_m);
             return !_rg_writer_closing;
         }
-        bool closed() {
+        bool closed() const override {
             return _closed.load();
+        }
+
+        std::string file_name() const {
+            return _file_name;
+        }
+
+        std::string partition_dir() const {
+            return _file_dir;
         }
 
     private:
         void _flush_row_group() override;
-        Status _split_offsets(std::vector<int64_t> &splitOffsets);
-        Status _build_iceberg_datafile(TIcebergDataFile& dataFile);
 
         std::string _file_name;
         std::string _file_dir;
