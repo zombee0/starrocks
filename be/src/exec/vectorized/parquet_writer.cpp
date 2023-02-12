@@ -38,39 +38,7 @@ namespace starrocks::vectorized {
             builder.disable_dictionary();
         }
         builder.version(::parquet::ParquetVersion::PARQUET_2_0);
-        switch (tableInfo._compress_type) {
-            case tparquet::CompressionCodec::UNCOMPRESSED : {
-                builder.compression(::parquet::Compression::UNCOMPRESSED);
-                break;
-            }
-            case tparquet::CompressionCodec::SNAPPY : {
-                builder.compression(::parquet::Compression::SNAPPY);
-                break;
-            }
-            case tparquet::CompressionCodec::GZIP : {
-                builder.compression(::parquet::Compression::GZIP);
-                break;
-            }
-            case tparquet::CompressionCodec::LZO : {
-                builder.compression(::parquet::Compression::LZO);
-                break;
-            }
-            case tparquet::CompressionCodec::BROTLI : {
-                builder.compression(::parquet::Compression::BROTLI);
-                break;
-            }
-            case tparquet::CompressionCodec::LZ4 : {
-                builder.compression(::parquet::Compression::LZ4);
-                break;
-            }
-            case tparquet::CompressionCodec::ZSTD : {
-                builder.compression(::parquet::Compression::ZSTD);
-                break;
-            }
-            default: {
-                return Status::InvalidArgument("Error compression type");
-            }
-        }
+        starrocks::parquet::ParquetBuildHelper::build_compression_type(builder, tableInfo._compress_type);
         _properties = builder.build();
         if (partitionInfo._column_names.size() != partitionInfo._column_values.size()) {
             return Status::InvalidArgument("columns and values are not matched in partitionInfo");
@@ -93,7 +61,7 @@ namespace starrocks::vectorized {
         std::string file_name = get_new_file_name();
         WritableFileOptions options{.sync_on_close = false, .mode = FileSystem::CREATE_OR_OPEN_WITH_TRUNCATE};
         ASSIGN_OR_RETURN(auto writable_file, _fs->new_writable_file(options, file_name));
-        _writer = std::make_shared<starrocks::parquet::FileWriter>(std::move(writable_file), file_name, _partition_dir,
+        _writer = std::make_shared<starrocks::parquet::AsyncFileWriter>(std::move(writable_file), file_name, _partition_dir,
                                                                    _properties, _schema, _output_expr_ctxs, _parent_profile);
         auto st = _writer -> init();
         return st;

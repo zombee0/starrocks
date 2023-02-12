@@ -26,114 +26,195 @@
 
 namespace starrocks::parquet {
 
-ParquetOutputStream::ParquetOutputStream(std::unique_ptr<starrocks::WritableFile> wfile)
-        : _wfile(std::move(wfile)) {
-    set_mode(arrow::io::FileMode::WRITE);
-}
-
-ParquetOutputStream::~ParquetOutputStream() {
-    arrow::Status st = ParquetOutputStream::Close();
-    if (!st.ok()) {
-        LOG(WARNING) << "close parquet output stream failed: " << st;
+    ParquetOutputStream::ParquetOutputStream(std::unique_ptr<starrocks::WritableFile> wfile)
+            : _wfile(std::move(wfile)) {
+        set_mode(arrow::io::FileMode::WRITE);
     }
-}
 
-arrow::Status ParquetOutputStream::Write(const std::shared_ptr<arrow::Buffer> &data) {
-    return Write(data->data(), data->size());
-}
-
-arrow::Status ParquetOutputStream::Write(const void* data, int64_t nbytes) {
-    if (_is_closed) {
-        return arrow::Status::OK();
+    ParquetOutputStream::~ParquetOutputStream() {
+        arrow::Status st = ParquetOutputStream::Close();
+        if (!st.ok()) {
+            LOG(WARNING) << "close parquet output stream failed: " << st;
+        }
     }
-    const char* ch = reinterpret_cast<const char*>(data);
 
-    if (_header_state == INITED) {
-        _header_state = CACHED;
-    } else {
-        if (_header_state == CACHED) {
-            _header_state = WRITEN;
-            Status st = _wfile->append(Slice("PAR1"));
+    arrow::Status ParquetOutputStream::Write(const std::shared_ptr<arrow::Buffer> &data) {
+        arrow::Status st = Write(data->data(), data->size());
+        if (!st.ok()) {
+            LOG(WARNING) << "Failed to write data to output stream, err msg: " << st.message();
+        }
+        return st;
+    }
+
+    arrow::Status ParquetOutputStream::Write(const void* data, int64_t nbytes) {
+        if (_is_closed) {
+            return arrow::Status::IOError("The output stream is closed but there are still inputs");
+        }
+
+        const char* ch = reinterpret_cast<const char*>(data);
+
+        if (_header_state == INITED) {
+            _header_state = CACHED;
+        } else {
+            if (_header_state == CACHED) {
+                _header_state = WRITEN;
+                Status st = _wfile->append(Slice("PAR1"));
+                if (!st.ok()) {
+                    return arrow::Status::IOError(st.to_string());
+                }
+            }
+            Status st = _wfile->append(Slice(ch, nbytes));
             if (!st.ok()) {
                 return arrow::Status::IOError(st.to_string());
             }
         }
-        Status st = _wfile->append(Slice(ch, nbytes));
-        if (!st.ok()) {
-            return arrow::Status::IOError(st.to_string());
-        }
-    }
-    //Slice slice(ch, nbytes);
-    //Status st = _wfile->append(slice);
-    //if (!st.ok()) {
-    //    return arrow::Status::IOError(st.to_string());
-    //}
-    _cur_pos += nbytes;
-    return arrow::Status::OK();
-}
 
-arrow::Result<int64_t> ParquetOutputStream::Tell() const {
-    return _cur_pos;
-}
-
-arrow::Status ParquetOutputStream::Close() {
-    if (_is_closed) {
         return arrow::Status::OK();
     }
-    Status st = _wfile->close();
-    if (!st.ok()) {
-        LOG(WARNING) << "close parquet output stream failed: " << st;
-        return arrow::Status::IOError(st.to_string());
+
+    arrow::Result<int64_t> ParquetOutputStream::Tell() const {
+        if (_header_state == CACHED) {
+            return 4;
+        } else {
+            return _wfile->size();
+        }
     }
-    _is_closed = true;
-    return arrow::Status::OK();
-}
 
-int64_t ParquetOutputStream::get_written_len() const {
-    return _cur_pos;
-}
-
-FileWriter::FileWriter(std::unique_ptr<WritableFile> writable_file, std::string file_name, std::string& partition_dir,
-                       std::shared_ptr<::parquet::WriterProperties> properties, std::shared_ptr<::parquet::schema::GroupNode> schema,
-                       const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile)
-        : _file_name(file_name), _partition_dir(partition_dir), _properties(std::move(properties)),
-        _schema(std::move(schema)), _output_expr_ctxs(output_expr_ctxs), _parent_profile(parent_profile) {
-    _outstream = std::make_shared<ParquetOutputStream>(std::move(writable_file));
-    _buffered_values_estimate.reserve(_schema->field_count());
-    _rg_close_counter = ADD_COUNTER(_parent_profile, "RowGroupWriterCloseCounter", TUnit::UNIT);
-    _io_timer = ADD_TIMER(_parent_profile, "FileWriterIoTimer");
-}
-
-::parquet::RowGroupWriter* FileWriter::_get_rg_writer() {
-    if (_rg_writer == nullptr) {
-        _rg_writer = _writer->AppendBufferedRowGroup();
-        _cur_written_rows = 0;
+    arrow::Status ParquetOutputStream::Close() {
+        if (_is_closed) {
+            return arrow::Status::OK();
+        }
+        Status st = _wfile->close();
+        if (!st.ok()) {
+            LOG(WARNING) << "close parquet output stream failed: " << st;
+            return arrow::Status::IOError(st.to_string());
+        }
+        _is_closed = true;
+        return arrow::Status::OK();
     }
-    return _rg_writer;
-}
 
-Status FileWriter::init() {
-    _writer = ::parquet::ParquetFileWriter::Open(_outstream, _schema, _properties);
-    if (_writer == nullptr) {
-        return Status::InternalError("Failed to create file writer");
+    void ParquetBuildHelper::build_file_data_type(::parquet::Type::type& parquet_data_type,
+                                                  const LogicalType& column_data_type) {
+        switch (column_data_type) {
+            case TYPE_BOOLEAN: {
+                parquet_data_type = ::parquet::Type::BOOLEAN;
+                break;
+            }
+            case TYPE_TINYINT:
+            case TYPE_SMALLINT:
+            case TYPE_INT: {
+                parquet_data_type = ::parquet::Type::INT32;
+                break;
+            }
+            case TYPE_BIGINT:
+            case TYPE_DATE:
+            case TYPE_DATETIME: {
+                parquet_data_type = ::parquet::Type::INT64;
+                break;
+            }
+            case TYPE_LARGEINT: {
+                parquet_data_type = ::parquet::Type::INT96;
+                break;
+            }
+            case TYPE_FLOAT: {
+                parquet_data_type = ::parquet::Type::FLOAT;
+                break;
+            }
+            case TYPE_DOUBLE: {
+                parquet_data_type = ::parquet::Type::DOUBLE;
+                break;
+            }
+            case TYPE_CHAR:
+            case TYPE_VARCHAR:
+            case TYPE_DECIMAL:
+            case TYPE_DECIMAL32:
+            case TYPE_DECIMAL64:
+            case TYPE_DECIMALV2: {
+                parquet_data_type = ::parquet::Type::BYTE_ARRAY;
+                break;
+            }
+            default:
+                parquet_data_type = ::parquet::Type::UNDEFINED;
+        }
     }
-    return Status::OK();
-}
+
+    void ParquetBuildHelper::build_parquet_repetition_type(::parquet::Repetition::type& parquet_repetition_type,
+                                                           const bool is_nullable) {
+        parquet_repetition_type = is_nullable ? ::parquet::Repetition::OPTIONAL : ::parquet::Repetition::REQUIRED;
+    }
+
+    void ParquetBuildHelper::build_compression_type(::parquet::WriterProperties::Builder& builder,
+                                                    const TCompressionType::type& compression_type) {
+        switch (compression_type) {
+            case TCompressionType::SNAPPY: {
+                builder.compression(::parquet::Compression::SNAPPY);
+                break;
+            }
+            case TCompressionType::GZIP: {
+                builder.compression(::parquet::Compression::GZIP);
+                break;
+            }
+            case TCompressionType::BROTLI: {
+                builder.compression(::parquet::Compression::BROTLI);
+                break;
+            }
+            case TCompressionType::ZSTD: {
+                builder.compression(::parquet::Compression::ZSTD);
+                break;
+            }
+            case TCompressionType::LZ4: {
+                builder.compression(::parquet::Compression::LZ4);
+                break;
+            }
+            case TCompressionType::LZO: {
+                builder.compression(::parquet::Compression::LZO);
+                break;
+            }
+            case TCompressionType::BZIP2: {
+                builder.compression(::parquet::Compression::BZ2);
+                break;
+            }
+            default:
+                builder.compression(::parquet::Compression::UNCOMPRESSED);
+        }
+    }
+
+    FileWriterBase::FileWriterBase(std::unique_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
+                                   std::shared_ptr<::parquet::schema::GroupNode> schema, const std::vector<ExprContext*>& output_expr_ctxs)
+            : _properties(std::move(properties)), _schema(std::move(schema)), _output_expr_ctxs(output_expr_ctxs) {
+        _outstream = std::make_shared<ParquetOutputStream>(std::move(writable_file));
+        _buffered_values_estimate.reserve(_schema->field_count());
+    }
+
+    Status FileWriterBase::init() {
+        _writer = ::parquet::ParquetFileWriter::Open(_outstream, _schema, _properties);
+        if (_writer == nullptr) {
+            return Status::InternalError("Failed to create file writer");
+        }
+        return Status::OK();
+    }
+
+    ::parquet::RowGroupWriter* FileWriterBase::_get_rg_writer() {
+        if (_rg_writer == nullptr) {
+            _rg_writer = _writer->AppendBufferedRowGroup();
+        }
+        return _rg_writer;
+    }
 
 #define DISPATCH_PARQUET_NUMERIC_WRITER(WRITER, COLUMN_TYPE, NATIVE_TYPE)                                     \
-    ::parquet::RowGroupWriter* rg_writer = FileWriter::_get_rg_writer();                                                                              \
+    ::parquet::RowGroupWriter* rg_writer = _get_rg_writer();                                                  \
     ::parquet::WRITER* col_writer = static_cast<::parquet::WRITER*>(rg_writer->column(i));                    \
     col_writer->WriteBatch(num_rows, nullable ? def_level.data() : nullptr, nullptr,                          \
         reinterpret_cast<const NATIVE_TYPE*>(down_cast<const COLUMN_TYPE*>(data_column)->get_data().data())); \
-    _buffered_values_estimate[i] = col_writer->EstimatedBufferedValueBytes();                                 \
+    _buffered_values_estimate[i] = col_writer->EstimatedBufferedValueBytes();
 
 #define DISPATCH_PARQUET_STRING_WRITER()                                                                      \
-    ::parquet::RowGroupWriter* rg_writer = FileWriter::_get_rg_writer();                                       \
+    ::parquet::RowGroupWriter* rg_writer = _get_rg_writer();                                                  \
     ::parquet::ByteArrayWriter* col_writer = static_cast<::parquet::ByteArrayWriter*>(rg_writer->column(i));  \
     if (nullable) {                                                                                           \
         LOG(WARNING) << "nullable string writer";                                                             \
         ::parquet::ByteArray value;                                                                           \
-        const vectorized::BinaryColumn* binary_col = down_cast<const vectorized::BinaryColumn*>(data_column); \
+        const vectorized::BinaryColumn* binary_col = down_cast<const vectorized::BinaryColumn*>(data_column);                         \
         for (size_t i = 0; i < num_rows; i++) {                                                               \
             value.ptr = reinterpret_cast<const uint8_t*>(binary_col->get_slice(i).get_data());                \
             value.len = binary_col->get_slice(i).get_size();                                                  \
@@ -141,7 +222,7 @@ Status FileWriter::init() {
         }                                                                                                     \
     } else {                                                                                                  \
         ::parquet::ByteArray value;                                                                           \
-        const vectorized::BinaryColumn* binary_col = down_cast<const vectorized::BinaryColumn*>(data_column); \
+        const vectorized::BinaryColumn* binary_col = down_cast<const vectorized::BinaryColumn*>(data_column);                         \
         for (size_t i = 0; i < num_rows; i++) {                                                               \
             value.ptr = reinterpret_cast<const uint8_t*>(binary_col->get_slice(i).get_data());                \
             value.len = binary_col->get_slice(i).get_size();                                                  \
@@ -150,242 +231,271 @@ Status FileWriter::init() {
     }                                                                                                         \
     _buffered_values_estimate[i] = col_writer->EstimatedBufferedValueBytes();
 
-Status FileWriter::write(vectorized::Chunk* chunk) {
-    if (!chunk->has_rows()) {
+    Status FileWriterBase::write(vectorized::Chunk* chunk) {
+        if (!chunk->has_rows()) {
+            return Status::OK();
+        }
+
+        vectorized::Columns result_columns;
+        // Step 1: compute expr
+        int num_columns = _output_expr_ctxs.size();
+        result_columns.reserve(num_columns);
+
+        for (int i = 0; i < num_columns; ++i) {
+            ASSIGN_OR_RETURN(ColumnPtr column, _output_expr_ctxs[i]->evaluate(chunk));
+            //column = _output_expr_ctxs[i]->root()->type().type == TYPE_TIME
+            //         ? vectorized::ColumnHelper::convert_time_column_from_double_to_str(column)
+            //         : column;
+            result_columns.emplace_back(std::move(column));
+        }
+
+
+        size_t num_rows = chunk->num_rows();
+        for (size_t i = 0; i < result_columns.size(); i++) {
+            // auto &col = chunk->get_column_by_index(i);
+            auto &col = result_columns[i];
+            bool nullable = col->is_nullable();
+            auto null_column = nullable && down_cast<starrocks::vectorized::NullableColumn *>(col.get())->has_null()
+                               ? down_cast<starrocks::vectorized::NullableColumn *>(col.get())->null_column()
+                               : nullptr;
+            const auto data_column = vectorized::ColumnHelper::get_data_column(col.get());
+
+            std::vector<int16_t> def_level(num_rows);
+            std::fill(def_level.begin(), def_level.end(), 1);
+            if (null_column != nullptr) {
+                auto nulls = null_column->get_data();
+                for (size_t j = 0; j < num_rows; j++) {
+                    def_level[j] = nulls[j] == 0;
+                }
+            }
+
+            const auto type = _output_expr_ctxs[i]->root()->type().type;
+            switch (type) {
+                case TYPE_BOOLEAN: {
+                    DISPATCH_PARQUET_NUMERIC_WRITER(BoolWriter, starrocks::vectorized::BooleanColumn, bool)
+                    break;
+                }
+                case TYPE_INT: {
+                    DISPATCH_PARQUET_NUMERIC_WRITER(Int32Writer, starrocks::vectorized::Int32Column, int32_t)
+                    break;
+                }
+                case TYPE_BIGINT: {
+                    DISPATCH_PARQUET_NUMERIC_WRITER(Int64Writer, starrocks::vectorized::Int64Column, int64_t)
+                    break;
+                }
+                case TYPE_FLOAT: {
+                    DISPATCH_PARQUET_NUMERIC_WRITER(FloatWriter, starrocks::vectorized::FloatColumn, float)
+                    break;
+                }
+                case TYPE_DOUBLE: {
+                    DISPATCH_PARQUET_NUMERIC_WRITER(DoubleWriter, starrocks::vectorized::DoubleColumn, double)
+                    break;
+                }
+                case TYPE_CHAR:
+                case TYPE_VARCHAR: {
+                    DISPATCH_PARQUET_STRING_WRITER()
+                    break;
+                }
+                default: {
+                    return Status::InvalidArgument("Unsupported type");
+                }
+            }
+        }
+
+        if (_get_current_rg_written_bytes() > _max_row_group_size) {
+            _flush_row_group();
+        }
+
         return Status::OK();
     }
 
-    vectorized::Columns result_columns;
-    // Step 1: compute expr
-    int num_columns = _output_expr_ctxs.size();
-    result_columns.reserve(num_columns);
-
-    for (int i = 0; i < num_columns; ++i) {
-        ASSIGN_OR_RETURN(ColumnPtr column, _output_expr_ctxs[i]->evaluate(chunk));
-        //column = _output_expr_ctxs[i]->root()->type().type == TYPE_TIME
-        //         ? vectorized::ColumnHelper::convert_time_column_from_double_to_str(column)
-        //         : column;
-        result_columns.emplace_back(std::move(column));
-    }
-
-    size_t num_rows = chunk->num_rows();
-    for (size_t i = 0; i < result_columns.size(); i++) {
-        // auto &col = chunk->get_column_by_index(i);
-        auto &col = result_columns[i];
-        bool nullable = col->is_nullable();
-        auto null_column = nullable && down_cast<starrocks::vectorized::NullableColumn *>(col.get())->has_null()
-                           ? down_cast<starrocks::vectorized::NullableColumn *>(col.get())->null_column()
-                           : nullptr;
-        const auto data_column = vectorized::ColumnHelper::get_data_column(col.get());
-
-        std::vector<int16_t> def_level(num_rows);
-        std::fill(def_level.begin(), def_level.end(), 1);
-        if (null_column != nullptr) {
-            auto nulls = null_column->get_data();
-            for (size_t j = 0; j < num_rows; j++) {
-                def_level[j] = nulls[j] == 0;
-            }
+    // The current row group written bytes = total_bytes_written + total_compressed_bytes + estimated_bytes.
+    // total_bytes_written: total bytes written by the page writer
+    // total_compressed_types: total bytes still compressed but not written
+    // estimated_bytes: estimated size of all column chunk uncompressed values that are not written to a page yet. it
+    // mainly includes value buffer size and repetition buffer size and definition buffer value for each column.
+    std::size_t FileWriterBase::_get_current_rg_written_bytes() {
+        if (_rg_writer == nullptr) {
+            return 0;
         }
 
-        const auto type = _output_expr_ctxs[i]->root()->type().type;
-        switch (type) {
-            case TYPE_BOOLEAN: {
-                DISPATCH_PARQUET_NUMERIC_WRITER(BoolWriter, starrocks::vectorized::BooleanColumn, bool)
-                break;
-            }
-            case TYPE_INT: {
-                DISPATCH_PARQUET_NUMERIC_WRITER(Int32Writer, starrocks::vectorized::Int32Column, int32_t)
-                break;
-            }
-            case TYPE_BIGINT: {
-                DISPATCH_PARQUET_NUMERIC_WRITER(Int64Writer, starrocks::vectorized::Int64Column, int64_t)
-                break;
-            }
-            case TYPE_FLOAT: {
-                DISPATCH_PARQUET_NUMERIC_WRITER(FloatWriter, starrocks::vectorized::FloatColumn, float)
-                break;
-            }
-            case TYPE_DOUBLE: {
-                DISPATCH_PARQUET_NUMERIC_WRITER(DoubleWriter, starrocks::vectorized::DoubleColumn, double)
-                break;
-            }
-            case TYPE_CHAR:
-            case TYPE_VARCHAR: {
-                DISPATCH_PARQUET_STRING_WRITER()
-                break;
-            }
-            default: {
-                return Status::InvalidArgument("Unsupported type");
-            }
-        }
+        auto estimated_bytes = std::accumulate(_buffered_values_estimate.begin(), _buffered_values_estimate.end(), 0);
+
+        return _rg_writer->total_bytes_written() + _rg_writer->total_compressed_bytes() + estimated_bytes;
     }
 
-    _cur_written_rows += num_rows;
-    if (get_written_bytes() > _max_row_group_size) {
-        _rg_writer_close();
+    std::size_t FileWriterBase::file_size() {
+        DCHECK(_outstream != nullptr);
+        return _outstream->Tell().MoveValueUnsafe() + _get_current_rg_written_bytes();
     }
-    return Status::OK();
-}
 
 
-void FileWriter::_rg_writer_close() {
-    {
-        auto lock = std::unique_lock(_m);
-        _rg_writer_closing = true;
-    }
-    bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
-        SCOPED_TIMER(_io_timer);
+
+    void SyncFileWriter::_flush_row_group() {
         _rg_writer->Close();
-        _total_row_group_writen_bytes = _outstream->get_written_len();
-        _total_rows += _cur_written_rows;
         _rg_writer = nullptr;
         std::fill(_buffered_values_estimate.begin(), _buffered_values_estimate.end(), 0);
-        {
-            auto lock = std::unique_lock(_m);
-            _rg_writer_closing = false;
-            lock.unlock();
-            _cv.notify_one();
-        }
-    });
-    if (!ret) {
-        {
-            auto lock = std::unique_lock(_m);
-            _rg_writer_closing = false;
-            lock.unlock();
-            _cv.notify_one();
-        }
-    }
-}
-
-size_t FileWriter::get_written_bytes() {
-    if (_rg_writer == nullptr) {
-        return 0;
-    }
-    int64_t estimated_bytes = 0;
-
-    for (long i : _buffered_values_estimate) {
-        estimated_bytes += i;
     }
 
-    return _rg_writer->total_bytes_written() + _rg_writer->total_compressed_bytes() + estimated_bytes;
-}
-
-Status FileWriter::close(RuntimeState* state) {
-    bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&, state]() {
-        {
-            auto lock = std::unique_lock(_m);
-            _cv.wait(lock, [&]{ return !_rg_writer_closing; });
+    Status SyncFileWriter::close() {
+        if (_closed) {
+            return Status::OK();
         }
-        SCOPED_TIMER(_io_timer);
-        LOG(WARNING) << "closing " << _file_name;
+
         _writer->Close();
-        LOG(WARNING) << "closed " << _file_name;
-        _file_metadata = _writer->metadata();
+        _rg_writer = nullptr;
         auto st = _outstream->Close();
-        TIcebergDataFile dataFile;
-        buildIcebergDataFile(dataFile);
-        state->add_iceberg_data_file(dataFile);
-        _closed.store(true);
-    });
-    if (ret) {
+        if (st != ::arrow::Status::OK()) {
+            return Status::InternalError("Close file failed!");
+        }
+
+        _closed = true;
         return Status::OK();
-    } else {
-        return Status::InternalError("Submit close file error");
     }
-}
 
-std::size_t FileWriter::file_size() {
-    DCHECK(_outstream != nullptr);
-    return _total_row_group_writen_bytes + get_written_bytes();
-}
+    AsyncFileWriter::AsyncFileWriter(std::unique_ptr<WritableFile> writable_file, std::string file_name, std::string& file_dir,
+                                     std::shared_ptr<::parquet::WriterProperties> properties, std::shared_ptr<::parquet::schema::GroupNode> schema,
+                                     const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile)
+            : FileWriterBase(std::move(writable_file), std::move(properties), std::move(schema), output_expr_ctxs),
+              _file_name(file_name), _file_dir(file_dir), _parent_profile(parent_profile) {
+        _io_timer = ADD_TIMER(_parent_profile, "FileWriterIoTimer");
+    }
 
-Status FileWriter::buildIcebergDataFile(TIcebergDataFile& dataFile) {
-    dataFile.partition_path = _partition_dir;
-    dataFile.path = _file_name;
-    dataFile.format = "parquet";
-    dataFile.record_count = _cur_written_rows;
-    dataFile.file_size_in_bytes = _outstream->get_written_len();
-    std::vector<int64_t> split_offsets;
-    LOG(WARNING) << "go to splitOffsets";
-    splitOffsets(split_offsets);
-    dataFile.split_offsets = split_offsets;
-
-    std::unordered_map<int32_t, int64_t> column_sizes;
-    std::unordered_map<int32_t, int64_t> value_counts;
-    std::unordered_map<int32_t, int64_t> null_value_counts;
-    std::unordered_map<int32_t, std::string> min_values;
-    std::unordered_map<int32_t, std::string> max_values;
-
-    for (int i = 0; i < _file_metadata->num_row_groups(); ++i) {
-        auto block = _file_metadata->RowGroup(i);
-        for (int j = 0; j < block->num_columns(); j++) {
-            auto column_meta = block->ColumnChunk(j);
-            int field_id = j + 1;
-            if (null_value_counts.find(field_id) == null_value_counts.end()) {
-//              LOG(WARNING) << "================null_value_counts============";
-                null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
-            } else {
-                null_value_counts[field_id] += column_meta->statistics()->null_count();
+    void AsyncFileWriter::_flush_row_group() {
+        {
+            auto lock = std::unique_lock(_m);
+            _rg_writer_closing = true;
+        }
+        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&]() {
+            SCOPED_TIMER(_io_timer);
+            _rg_writer->Close();
+            _rg_writer = nullptr;
+            std::fill(_buffered_values_estimate.begin(), _buffered_values_estimate.end(), 0);
+            {
+                auto lock = std::unique_lock(_m);
+                _rg_writer_closing = false;
+                lock.unlock();
+                _cv.notify_one();
             }
-
-            if (column_sizes.find(field_id) == column_sizes.end()) {
-                column_sizes.insert({field_id, column_meta->total_compressed_size()});
-            } else {
-                column_sizes[field_id] += column_meta->total_compressed_size();
+        });
+        if (!ret) {
+            {
+                auto lock = std::unique_lock(_m);
+                _rg_writer_closing = false;
+                lock.unlock();
+                _cv.notify_one();
             }
-
-            if (value_counts.find(field_id) == value_counts.end()) {
-                value_counts.insert({field_id, column_meta->num_values()});
-            } else {
-                value_counts[field_id] += column_meta->num_values();
-            }
-
-            min_values[field_id] = column_meta->statistics()->EncodeMin();
-            max_values[field_id] = column_meta->statistics()->EncodeMax();
         }
     }
 
-    TIcebergColumnStats stats;
-    for(auto& i : column_sizes) {
-        stats.columnSizes.insert({i.first, i.second});
-    }
-    for(auto& i : value_counts) {
-        stats.valueCounts.insert({i.first, i.second});
-    }
-    for(auto& i : null_value_counts) {
-        stats.nullValueCounts.insert({i.first, i.second});
-    }
-    for(auto& i : min_values) {
-        stats.lowerBounds.insert({i.first, i.second});
-    }
-    for(auto& i : max_values) {
-        stats.upperBounds.insert({i.first, i.second});
+    Status AsyncFileWriter::close(RuntimeState* state) {
+        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&, state]() {
+            {
+                auto lock = std::unique_lock(_m);
+                _cv.wait(lock, [&]{ return !_rg_writer_closing; });
+            }
+            SCOPED_TIMER(_io_timer);
+            _writer->Close();
+            _rg_writer = nullptr;
+            _file_metadata = _writer->metadata();
+            auto st = _outstream->Close();
+            //TIcebergDataFile dataFile;
+            //buildIcebergDataFile(dataFile);
+            //state->add_iceberg_data_file(dataFile);
+            _closed.store(true);
+        });
+        if (ret) {
+            return Status::OK();
+        } else {
+            return Status::InternalError("Submit close file error");
+        }
     }
 
-    dataFile.column_stats = stats;
-    return Status::OK();
-}
+    Status AsyncFileWriter::_build_iceberg_datafile(TIcebergDataFile& dataFile) {
+        dataFile.partition_path = _file_dir;
+        dataFile.path = _file_name;
+        dataFile.format = "parquet";
+        dataFile.record_count = _file_metadata->num_rows();
+        dataFile.file_size_in_bytes = _outstream->Tell().MoveValueUnsafe();
+        std::vector<int64_t> split_offsets;
+        LOG(WARNING) << "go to splitOffsets";
+        _split_offsets(split_offsets);
+        dataFile.split_offsets = split_offsets;
 
-Status FileWriter::splitOffsets(std::vector<int64_t>& splitOffsets) {
-    LOG(WARNING) << "In splitOffsets";
-    if (closed()) {
-        LOG(WARNING) << "file closed";
+        std::unordered_map<int32_t, int64_t> column_sizes;
+        std::unordered_map<int32_t, int64_t> value_counts;
+        std::unordered_map<int32_t, int64_t> null_value_counts;
+        std::unordered_map<int32_t, std::string> min_values;
+        std::unordered_map<int32_t, std::string> max_values;
+
+        for (int i = 0; i < _file_metadata->num_row_groups(); ++i) {
+            auto block = _file_metadata->RowGroup(i);
+            for (int j = 0; j < block->num_columns(); j++) {
+                auto column_meta = block->ColumnChunk(j);
+                int field_id = j + 1;
+                if (null_value_counts.find(field_id) == null_value_counts.end()) {
+//              LOG(WARNING) << "================null_value_counts============";
+                    null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
+                } else {
+                    null_value_counts[field_id] += column_meta->statistics()->null_count();
+                }
+
+                if (column_sizes.find(field_id) == column_sizes.end()) {
+                    column_sizes.insert({field_id, column_meta->total_compressed_size()});
+                } else {
+                    column_sizes[field_id] += column_meta->total_compressed_size();
+                }
+
+                if (value_counts.find(field_id) == value_counts.end()) {
+                    value_counts.insert({field_id, column_meta->num_values()});
+                } else {
+                    value_counts[field_id] += column_meta->num_values();
+                }
+
+                min_values[field_id] = column_meta->statistics()->EncodeMin();
+                max_values[field_id] = column_meta->statistics()->EncodeMax();
+            }
+        }
+
+        TIcebergColumnStats stats;
+        for(auto& i : column_sizes) {
+            stats.columnSizes.insert({i.first, i.second});
+        }
+        for(auto& i : value_counts) {
+            stats.valueCounts.insert({i.first, i.second});
+        }
+        for(auto& i : null_value_counts) {
+            stats.nullValueCounts.insert({i.first, i.second});
+        }
+        for(auto& i : min_values) {
+            stats.lowerBounds.insert({i.first, i.second});
+        }
+        for(auto& i : max_values) {
+            stats.upperBounds.insert({i.first, i.second});
+        }
+
+        dataFile.column_stats = stats;
+        return Status::OK();
     }
-    if (_file_metadata.get() == nullptr) {
-        LOG(WARNING) << "file metadata null";
-    }
-    for (int i = 0; i < _file_metadata->num_row_groups(); i++) {
-        LOG(WARNING) << "======row group======:  " << i;
-        auto first_column_meta = _file_metadata->RowGroup(i)->ColumnChunk(0);
-        int64_t dict_page_offset = first_column_meta->dictionary_page_offset();
-        int64_t first_data_page_offset = first_column_meta->data_page_offset();
-        LOG(WARNING) << "======[dict_page_offset]=====[" << dict_page_offset << "]============";
-        LOG(WARNING) << "======[first_data_page_offset]=====[" << first_data_page_offset << "]============";
-        int64_t split_offset = dict_page_offset > 0 && dict_page_offset < first_data_page_offset ? dict_page_offset
+
+    Status AsyncFileWriter::_split_offsets(std::vector<int64_t>& splitOffsets) {
+        LOG(WARNING) << "In splitOffsets";
+        if (closed()) {
+            LOG(WARNING) << "file closed";
+        }
+        if (_file_metadata.get() == nullptr) {
+            LOG(WARNING) << "file metadata null";
+        }
+        for (int i = 0; i < _file_metadata->num_row_groups(); i++) {
+            LOG(WARNING) << "======row group======:  " << i;
+            auto first_column_meta = _file_metadata->RowGroup(i)->ColumnChunk(0);
+            int64_t dict_page_offset = first_column_meta->dictionary_page_offset();
+            int64_t first_data_page_offset = first_column_meta->data_page_offset();
+            int64_t split_offset = dict_page_offset > 0 && dict_page_offset < first_data_page_offset ? dict_page_offset
                                                                                                      : first_data_page_offset;
-        splitOffsets.emplace_back(split_offset);
+            splitOffsets.emplace_back(split_offset);
+        }
+        return Status::OK();
     }
-    return Status::OK();
-}
 
 } // namespace starrocks::parquet

@@ -32,20 +32,7 @@
 #include "fs/fs.h"
 #include "common/logging.h"
 
-#include "gen_cpp/parquet_types.h"
-
-//SinkOperator
-// member
-
-// partition partition->chunk
-
-// partition -> Sink_IO_buffer
-
-// plan B:
-// chunk -> chunk1 chunk2
-// partition 1 -> sink_io_buffer   -> parition writer
-// partition 2 -> sink_io_buffer
-
+#include "gen_cpp/Types_types.h"
 
 namespace starrocks::vectorized {
 
@@ -55,7 +42,7 @@ namespace starrocks::vectorized {
     struct TableInfo {
         std::string _table_location;
         std::string _file_format;
-        tparquet::CompressionCodec::type _compress_type = tparquet::CompressionCodec::UNCOMPRESSED;
+        TCompressionType::type _compress_type = TCompressionType::SNAPPY;
         bool _enable_dictionary = true;
 
         std::shared_ptr<::parquet::schema::GroupNode> _schema;;
@@ -96,13 +83,13 @@ namespace starrocks::vectorized {
         Status close_current_writer(RuntimeState* state);
 
         std::shared_ptr<FileSystem> _fs;
-        std::shared_ptr<starrocks::parquet::FileWriter> _writer = nullptr;
+        std::shared_ptr<starrocks::parquet::AsyncFileWriter> _writer = nullptr;
         std::shared_ptr<::parquet::WriterProperties> _properties;
         std::shared_ptr<::parquet::schema::GroupNode> _schema;
         std::string _partition_dir;
         int32_t _cnt = 0;
         std::string _location;
-        std::vector<std::shared_ptr<starrocks::parquet::FileWriter>> _pending_commits;
+        std::vector<std::shared_ptr<starrocks::parquet::AsyncFileWriter>> _pending_commits;
         int64_t _max_file_size = 512 * 1024 * 1024; // 1024 * 1024 * 1024;
         std::vector<ExprContext*> _output_expr_ctxs;
         RuntimeProfile* _parent_profile;

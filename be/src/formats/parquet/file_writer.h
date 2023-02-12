@@ -46,13 +46,8 @@ namespace starrocks::parquet {
 
         bool closed() const override { return _is_closed; };
 
-        int64_t get_written_len() const;
-
-        //const std::string& filename() { return _wfile->filename(); }
-
     private:
         std::unique_ptr<starrocks::WritableFile> _wfile;
-        int64_t _cur_pos = 0;
         bool _is_closed = false;
 
         enum HEADER_STATE {
@@ -63,18 +58,74 @@ namespace starrocks::parquet {
         HEADER_STATE _header_state = INITED;
     };
 
-    class FileWriter {
+    class ParquetBuildHelper {
     public:
-        FileWriter(std::unique_ptr<WritableFile> writable_file, std::string file_name, std::string& partition_dir,
-                   std::shared_ptr<::parquet::WriterProperties> properties, std::shared_ptr<::parquet::schema::GroupNode> schema,
-                   const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile);
+        static void build_file_data_type(::parquet::Type::type& parquet_data_type, const LogicalType& column_data_type);
 
-        ~FileWriter() = default;
+        static void build_parquet_repetition_type(::parquet::Repetition::type& parquet_repetition_type,
+                                                  const bool is_nullable);
+
+        static void build_compression_type(::parquet::WriterProperties::Builder& builder,
+                                           const TCompressionType::type& compression_type);
+    };
+
+    class FileWriterBase {
+    public:
+        FileWriterBase(std::unique_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
+                       std::shared_ptr<::parquet::schema::GroupNode> schema, const std::vector<ExprContext*>& output_expr_ctxs);
+        ~FileWriterBase() = default;
 
         Status init();
         Status write(vectorized::Chunk* chunk);
-        Status close(RuntimeState* state);
+        std::size_t file_size();
+        void set_max_rog_group_size(int64_t rg_size) { _max_row_group_size = rg_size; }
+
         std::shared_ptr<::parquet::FileMetaData> metadata() const { return _file_metadata; }
+
+    protected:
+        virtual void _flush_row_group() = 0;
+
+    private:
+        ::parquet::RowGroupWriter* _get_rg_writer();
+        std::size_t _get_current_rg_written_bytes();
+
+    protected:
+        std::shared_ptr<ParquetOutputStream> _outstream;
+        std::shared_ptr<::parquet::WriterProperties> _properties;
+        std::shared_ptr<::parquet::schema::GroupNode> _schema;
+        std::unique_ptr<::parquet::ParquetFileWriter> _writer;
+        ::parquet::RowGroupWriter* _rg_writer = nullptr;
+        std::vector<ExprContext*> _output_expr_ctxs;
+        std::shared_ptr<::parquet::FileMetaData> _file_metadata;
+
+        int64_t _max_row_group_size = 128 * 1024 * 1024; // 128 * 1024 * 1024;
+        std::vector<int64_t> _buffered_values_estimate;
+    };
+
+    class SyncFileWriter : public FileWriterBase {
+    public:
+        SyncFileWriter(std::unique_ptr<WritableFile> writable_file, std::shared_ptr<::parquet::WriterProperties> properties,
+                       std::shared_ptr<::parquet::schema::GroupNode> schema, const std::vector<ExprContext*>& output_expr_ctxs)
+                : FileWriterBase(std::move(writable_file), std::move(properties), std::move(schema), output_expr_ctxs) {}
+        ~SyncFileWriter() = default;
+
+        Status close();
+
+    private:
+        void _flush_row_group() override;
+        bool _closed = false;
+    };
+
+    class AsyncFileWriter : public FileWriterBase {
+    public:
+        AsyncFileWriter(std::unique_ptr<WritableFile> writable_file, std::string file_name, std::string& file_dir,
+                        std::shared_ptr<::parquet::WriterProperties> properties, std::shared_ptr<::parquet::schema::GroupNode> schema,
+                        const std::vector<ExprContext*>& output_expr_ctxs, RuntimeProfile* parent_profile);
+
+        ~AsyncFileWriter() = default;
+
+        Status close(RuntimeState* state);
+
         bool writable() {
             auto lock = std::unique_lock(_m);
             return !_rg_writer_closing;
@@ -82,39 +133,22 @@ namespace starrocks::parquet {
         bool closed() {
             return _closed.load();
         }
-        Status buildIcebergDataFile(TIcebergDataFile& dataFile);
-
-        size_t get_written_bytes();
-        Status splitOffsets(std::vector<int64_t> &splitOffsets);
-        std::size_t file_size();
 
     private:
-        ::parquet::RowGroupWriter* _get_rg_writer();
-        void _rg_writer_close();
+        void _flush_row_group() override;
+        Status _split_offsets(std::vector<int64_t> &splitOffsets);
+        Status _build_iceberg_datafile(TIcebergDataFile& dataFile);
 
-        std::shared_ptr<ParquetOutputStream> _outstream;
         std::string _file_name;
-        std::string _partition_dir;
-        std::shared_ptr<::parquet::WriterProperties> _properties;
-        std::shared_ptr<::parquet::schema::GroupNode> _schema;
-        std::unique_ptr<::parquet::ParquetFileWriter> _writer;
-        ::parquet::RowGroupWriter* _rg_writer = nullptr;
-        int64_t _cur_written_rows;
-        int64_t _total_rows;
-        int64_t _max_row_group_size = 128 * 1024 * 1024; // 128 * 1024 * 1024;
-        std::shared_ptr<::parquet::FileMetaData> _file_metadata;
+        std::string _file_dir;
+
         std::atomic<bool> _closed = false;
-        std::vector<ExprContext*> _output_expr_ctxs;
         RuntimeProfile* _parent_profile;
-        RuntimeProfile::Counter* _rg_close_counter = nullptr;
         RuntimeProfile::Counter* _io_timer = nullptr;
-        std::vector<int64_t> _buffered_values_estimate;
-        int64_t _total_row_group_writen_bytes{0};
+
         std::condition_variable _cv;
         bool _rg_writer_closing = false;
         std::mutex _m;
     };
 
 } // namespace starrocks::parquet
-
-    
