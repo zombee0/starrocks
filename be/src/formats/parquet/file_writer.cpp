@@ -297,6 +297,7 @@ namespace starrocks::parquet {
                     break;
                 }
                 default: {
+                    //TODO: support other types
                     return Status::InvalidArgument("Unsupported type");
                 }
             }
@@ -407,12 +408,12 @@ namespace starrocks::parquet {
     }
 
     Status AsyncFileWriter::close(RuntimeState* state, std::function<void(starrocks::parquet::AsyncFileWriter*, RuntimeState*)> cb) {
-        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&, state]() {
+        bool ret = ExecEnv::GetInstance()->pipeline_sink_io_pool()->try_offer([&, state, cb]() {
+            SCOPED_TIMER(_io_timer);
             {
                 auto lock = std::unique_lock(_m);
                 _cv.wait(lock, [&]{ return !_rg_writer_closing; });
             }
-            SCOPED_TIMER(_io_timer);
             _writer->Close();
             _rg_writer = nullptr;
             _file_metadata = _writer->metadata();

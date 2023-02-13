@@ -53,7 +53,7 @@ namespace starrocks::vectorized {
 
     std::string ParquetWriterWrap::get_new_file_name() {
         _cnt += 1;
-        _location = _partition_dir + fmt::format("test_{}_{}.parquet", _cnt, generate_uuid_string());
+        _location = _partition_dir + fmt::format("{}_{}.parquet", _cnt, generate_uuid_string());
         return _location;
     }
 
@@ -76,7 +76,6 @@ namespace starrocks::vectorized {
         }
         // exceed file size
         if (_writer->file_size() > _max_file_size) {
-            LOG(WARNING) << "current file exceed file size, go to close: " << _location;
             auto st = close_current_writer(state);
             if (st.ok()) {
                 new_file_writer();
@@ -87,21 +86,18 @@ namespace starrocks::vectorized {
     }
 
     Status ParquetWriterWrap::close_current_writer(RuntimeState* state) {
-        LOG(WARNING) << "close file: " << _location;
-        Status st = _writer->close(state, add_iceberg_commit_info);
+        Status st = _writer->close(state, ParquetWriterWrap::add_iceberg_commit_info);
         if (st.ok()) {
-//            LOG(WARNING) << "put pending commit writer ====================";
             _pending_commits.emplace_back(_writer);
             return Status::OK();
         } else {
+            LOG(WARNING) << "close file error: " << _location;
             return Status::IOError( "close file error!");
         }
-
     }
 
     Status ParquetWriterWrap::close(RuntimeState* state) {
         if (_writer != nullptr) {
-            LOG(WARNING) << "rg writer close ====================";
             auto st = close_current_writer(state);
             if (!st.ok()) {
                 return st;
@@ -113,16 +109,9 @@ namespace starrocks::vectorized {
     bool ParquetWriterWrap::closed() {
         for (auto& writer : _pending_commits) {
             if (writer != nullptr && writer->closed()) {
-                //LOG(WARNING) << "======== parquet writer wrap close start ====================";
-                //TIcebergDataFile dataFile;
-                //writer->buildIcebergDataFile(dataFile);
-                //dataFile.partition_path = _partition_dir;
-                //dataFile.path = writer->filename();
-                // _data_files.emplace_back(dataFile);
                 writer = nullptr;
             }
             if (writer != nullptr && (!writer->closed())) {
-                // LOG(WARNING) << "==========file writer no close current====================";
                 return false;
             }
         }
@@ -142,7 +131,6 @@ namespace starrocks::vectorized {
         dataFile.record_count = writer->metadata()->num_rows();
         dataFile.file_size_in_bytes = writer->file_size();
         std::vector<int64_t> split_offsets;
-        LOG(WARNING) << "go to splitOffsets";
         writer->split_offsets(split_offsets);
         dataFile.split_offsets = split_offsets;
 
@@ -160,7 +148,6 @@ namespace starrocks::vectorized {
                 auto column_meta = block->ColumnChunk(j);
                 int field_id = j + 1;
                 if (null_value_counts.find(field_id) == null_value_counts.end()) {
-//              LOG(WARNING) << "================null_value_counts============";
                     null_value_counts.insert({field_id, column_meta->statistics()->null_count()});
                 } else {
                     null_value_counts[field_id] += column_meta->statistics()->null_count();

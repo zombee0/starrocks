@@ -73,9 +73,9 @@ namespace starrocks::vectorized {
         // init filesystem, init writeproperties, schema
         Status init_parquet_writer(const TableInfo& tableInfo, const PartitionInfo& partitionInfo);
         Status close(RuntimeState* state);
-        bool writable() { return _writer == nullptr || _writer->writable(); }
+        bool writable() const { return _writer == nullptr || _writer->writable(); }
         bool closed();
-        // std::vector<TIcebergDataFile> _data_files;
+
         static void add_iceberg_commit_info(starrocks::parquet::AsyncFileWriter* writer, RuntimeState* state);
 
     private:
@@ -91,7 +91,7 @@ namespace starrocks::vectorized {
         int32_t _cnt = 0;
         std::string _location;
         std::vector<std::shared_ptr<starrocks::parquet::AsyncFileWriter>> _pending_commits;
-        int64_t _max_file_size = 512 * 1024 * 1024; // 1024 * 1024 * 1024;
+        int64_t _max_file_size = 512 * 1024 * 1024;
         std::vector<ExprContext*> _output_expr_ctxs;
         RuntimeProfile* _parent_profile;
     };
