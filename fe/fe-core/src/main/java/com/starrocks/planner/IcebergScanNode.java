@@ -258,64 +258,66 @@ public class IcebergScanNode extends ScanNode {
         try (PlannerProfile.ScopedTimer ignored = PlannerProfile.getScopedTimer("FileStat.ScanSetup.PlanTime")) {
             for (CombinedScanTask combinedScanTask : IcebergUtil.getTableScan(
                     srIcebergTable.getIcebergTable(), snapshot.get(), icebergPredicate).planTasks()) {
-                for (FileScanTask task : combinedScanTask.files()) {
-                    DataFile file = task.file();
-                    LOG.debug("Scan with file " + file.path() + ", file record count " + file.recordCount());
-                    if (file.fileSizeInBytes() == 0) {
-                        continue;
-                    }
-
-                    StructLike partition = task.file().partition();
-                    if (!partitionMap.containsKey(partition)) {
-                        long partitionId = nextPartitionId();
-                        partitionMap.put(partition, partitionId);
-                    }
-
-                    String partitionName = IcebergUtil.convertIcebergPartitionToPartitionName(
-                            srIcebergTable.getIcebergTable().spec(), partition);
-                    if (partitionFileSize.containsKey(partitionName)) {
-                        partitionFileSize.merge(partitionName, 1, Integer::sum);
-                    } else {
-                        partitionFileSize.put(partitionName, 1);
-                    }
-
-                    TScanRangeLocations scanRangeLocations = new TScanRangeLocations();
-
-                    THdfsScanRange hdfsScanRange = new THdfsScanRange();
-                    hdfsScanRange.setFull_path(file.path().toString());
-                    hdfsScanRange.setOffset(task.start());
-                    hdfsScanRange.setLength(task.length());
-                    // For iceberg table we do not need partition id
-                    hdfsScanRange.setPartition_id(-1);
-                    hdfsScanRange.setFile_length(file.fileSizeInBytes());
-                    hdfsScanRange.setFile_format(IcebergUtil.getHdfsFileFormat(file.format()).toThrift());
-
-                    hdfsScanRange.setDelete_files(task.deletes().stream().map(source -> {
-                        TIcebergDeleteFile target = new TIcebergDeleteFile();
-                        target.setFull_path(source.path().toString());
-                        target.setFile_content(
-                                source.content() == FileContent.EQUALITY_DELETES ? TIcebergFileContent.EQUALITY_DELETES :
-                                        TIcebergFileContent.POSITION_DELETES);
-                        target.setLength(source.fileSizeInBytes());
-
-                        if (source.content() == FileContent.EQUALITY_DELETES) {
-                            source.equalityFieldIds().forEach(fieldId -> {
-                                equalityDeleteColumns.add(
-                                        srIcebergTable.getIcebergTable().schema().findColumnName(fieldId));
-                            });
+                try (PlannerProfile.ScopedTimer ignored1 = PlannerProfile.getScopedTimer("FileStat.ScanSetup.PlanTimeInner")) {
+                    for (FileScanTask task : combinedScanTask.files()) {
+                        DataFile file = task.file();
+                        LOG.debug("Scan with file " + file.path() + ", file record count " + file.recordCount());
+                        if (file.fileSizeInBytes() == 0) {
+                            continue;
                         }
 
-                        return target;
-                    }).collect(Collectors.toList()));
-                    TScanRange scanRange = new TScanRange();
-                    scanRange.setHdfs_scan_range(hdfsScanRange);
-                    scanRangeLocations.setScan_range(scanRange);
+                        StructLike partition = task.file().partition();
+                        if (!partitionMap.containsKey(partition)) {
+                            long partitionId = nextPartitionId();
+                            partitionMap.put(partition, partitionId);
+                        }
 
-                    // TODO: get hdfs block location information for scheduling, use iceberg meta cache
-                    TScanRangeLocation scanRangeLocation = new TScanRangeLocation(new TNetworkAddress("-1", -1));
-                    scanRangeLocations.addToLocations(scanRangeLocation);
+                        String partitionName = IcebergUtil.convertIcebergPartitionToPartitionName(
+                                srIcebergTable.getIcebergTable().spec(), partition);
+                        if (partitionFileSize.containsKey(partitionName)) {
+                            partitionFileSize.merge(partitionName, 1, Integer::sum);
+                        } else {
+                            partitionFileSize.put(partitionName, 1);
+                        }
 
-                    result.add(scanRangeLocations);
+                        TScanRangeLocations scanRangeLocations = new TScanRangeLocations();
+
+                        THdfsScanRange hdfsScanRange = new THdfsScanRange();
+                        hdfsScanRange.setFull_path(file.path().toString());
+                        hdfsScanRange.setOffset(task.start());
+                        hdfsScanRange.setLength(task.length());
+                        // For iceberg table we do not need partition id
+                        hdfsScanRange.setPartition_id(-1);
+                        hdfsScanRange.setFile_length(file.fileSizeInBytes());
+                        hdfsScanRange.setFile_format(IcebergUtil.getHdfsFileFormat(file.format()).toThrift());
+
+                        hdfsScanRange.setDelete_files(task.deletes().stream().map(source -> {
+                            TIcebergDeleteFile target = new TIcebergDeleteFile();
+                            target.setFull_path(source.path().toString());
+                            target.setFile_content(
+                                    source.content() == FileContent.EQUALITY_DELETES ? TIcebergFileContent.EQUALITY_DELETES :
+                                            TIcebergFileContent.POSITION_DELETES);
+                            target.setLength(source.fileSizeInBytes());
+
+                            if (source.content() == FileContent.EQUALITY_DELETES) {
+                                source.equalityFieldIds().forEach(fieldId -> {
+                                    equalityDeleteColumns.add(
+                                            srIcebergTable.getIcebergTable().schema().findColumnName(fieldId));
+                                });
+                            }
+
+                            return target;
+                        }).collect(Collectors.toList()));
+                        TScanRange scanRange = new TScanRange();
+                        scanRange.setHdfs_scan_range(hdfsScanRange);
+                        scanRangeLocations.setScan_range(scanRange);
+
+                        // TODO: get hdfs block location information for scheduling, use iceberg meta cache
+                        TScanRangeLocation scanRangeLocation = new TScanRangeLocation(new TNetworkAddress("-1", -1));
+                        scanRangeLocations.addToLocations(scanRangeLocation);
+
+                        result.add(scanRangeLocations);
+                    }
                 }
             }
         }
