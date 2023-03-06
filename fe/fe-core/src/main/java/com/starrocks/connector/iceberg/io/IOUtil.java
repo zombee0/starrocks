@@ -36,7 +36,9 @@ package com.starrocks.connector.iceberg.io;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.iceberg.hadoop.HadoopInputFile;
 import org.apache.iceberg.hadoop.HadoopOutputFile;
+import org.apache.iceberg.io.InputFile;
 import org.apache.iceberg.io.OutputFile;
 
 import java.io.EOFException;
@@ -93,6 +95,10 @@ public class IOUtil {
 
     public static OutputFile getOutputFile(Path path) {
         return HadoopOutputFile.fromPath(path, new Configuration());
+    }
+
+    public static InputFile getInputFile(Path path) {
+        return HadoopInputFile.fromPath(path, new Configuration());
     }
 
     public static OutputFile getOutputFile(String localDir, String path) {
