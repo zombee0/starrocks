@@ -32,13 +32,14 @@ import java.util.Set;
 
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static com.google.common.collect.Iterables.getOnlyElement;
-import static com.starrocks.connector.iceberg.cost.IcebergTableStatisticsWriter.APACHE_DATASKETCHES_THETA_V1_NDV_PROPERTY;
 import static java.lang.Long.parseLong;
 import static java.util.function.Function.identity;
 import static java.util.stream.Collectors.toMap;
 
 public class IcebergTableStatisticsReader {
     private static final Logger LOG = LogManager.getLogger(IcebergStatisticProvider.class);
+
+    public static final String APACHE_DATASKETCHES_THETA_V1_NDV_PROPERTY = "ndv";
 
     private IcebergTableStatisticsReader() {}
 
