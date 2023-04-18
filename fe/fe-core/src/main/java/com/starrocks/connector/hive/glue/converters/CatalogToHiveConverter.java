@@ -50,6 +50,8 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import static org.apache.commons.lang3.ObjectUtils.firstNonNull;
+import static org.apache.iceberg.BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE;
+import static org.apache.iceberg.BaseMetastoreTableOperations.TABLE_TYPE_PROP;
 
 public class CatalogToHiveConverter {
 
@@ -152,7 +154,13 @@ public class CatalogToHiveConverter {
         Date lastAccessedTime = catalogTable.getLastAccessTime();
         hiveTable.setLastAccessTime(lastAccessedTime == null ? 0 : (int) (lastAccessedTime.getTime() / 1000));
         hiveTable.setRetention(catalogTable.getRetention());
-        hiveTable.setSd(convertStorageDescriptor(catalogTable.getStorageDescriptor()));
+        // for iceberg table, don't need to set StorageDescriptor
+        // just use metadata location in parameters that checked in HiveTableValidator
+        // TODO(zombee0), check hudi deltalake
+        if (catalogTable.getParameters() == null || catalogTable.getParameters().get(TABLE_TYPE_PROP) == null ||
+                catalogTable.getParameters().get(TABLE_TYPE_PROP) != ICEBERG_TABLE_TYPE_VALUE) {
+            hiveTable.setSd(convertStorageDescriptor(catalogTable.getStorageDescriptor()));
+        }
         hiveTable.setPartitionKeys(convertFieldSchemaList(catalogTable.getPartitionKeys()));
         // Hive may throw a NPE during dropTable if the parameter map is null.
         Map<String, String> parameterMap = catalogTable.getParameters();
