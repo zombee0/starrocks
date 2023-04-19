@@ -42,7 +42,7 @@ public enum HiveTableValidator {
                 // TODO(zombee0), check hudi deltalake
                 if (table.getParameters() != null &&
                         table.getParameters().get(TABLE_TYPE_PROP) != null &&
-                        table.getParameters().get(TABLE_TYPE_PROP) == ICEBERG_TABLE_TYPE_VALUE) {
+                        table.getParameters().get(TABLE_TYPE_PROP).equalsIgnoreCase(ICEBERG_TABLE_TYPE_VALUE)) {
                     if (table.getParameters().get(METADATA_LOCATION_PROP) == null) {
                         missingProperty = "MetadataLocation";
                     }

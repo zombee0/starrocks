@@ -158,7 +158,7 @@ public class CatalogToHiveConverter {
         // just use metadata location in parameters that checked in HiveTableValidator
         // TODO(zombee0), check hudi deltalake
         if (catalogTable.getParameters() == null || catalogTable.getParameters().get(TABLE_TYPE_PROP) == null ||
-                catalogTable.getParameters().get(TABLE_TYPE_PROP) != ICEBERG_TABLE_TYPE_VALUE) {
+                (!catalogTable.getParameters().get(TABLE_TYPE_PROP).equalsIgnoreCase(ICEBERG_TABLE_TYPE_VALUE))) {
             hiveTable.setSd(convertStorageDescriptor(catalogTable.getStorageDescriptor()));
         }
         hiveTable.setPartitionKeys(convertFieldSchemaList(catalogTable.getPartitionKeys()));
