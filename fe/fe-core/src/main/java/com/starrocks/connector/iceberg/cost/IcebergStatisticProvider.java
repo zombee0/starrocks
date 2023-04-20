@@ -107,7 +107,7 @@ public class IcebergStatisticProvider {
         long snapshotId = snapshot.get().snapshotId();
 
         List<RemoteFileInfo> splits = GlobalStateMgr.getCurrentState().getMetadataMgr().getRemoteFileInfos(
-                icebergTable.getCatalogName(), icebergTable, null, snapshotId, icebergPredicate);
+                icebergTable.getCatalogName(), icebergTable, null, snapshotId, null);
 
         if (splits.isEmpty()) {
             return new IcebergFileStats(1);
@@ -203,7 +203,7 @@ public class IcebergStatisticProvider {
         ColumnStatistic.Builder builder = ColumnStatistic.builder();
         Long ndv = columnNdvs.get(fieldId);
         if (ndv != null) {
-            builder.setDistinctValuesCount(Math.min(ndv, icebergFileStats.getRecordCount()));
+            builder.setDistinctValuesCount(ndv);
         }
 
         if (icebergFileStats.getMinValue(fieldId).isPresent()) {
