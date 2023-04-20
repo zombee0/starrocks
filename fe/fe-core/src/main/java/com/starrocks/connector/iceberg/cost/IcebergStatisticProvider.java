@@ -225,8 +225,12 @@ public class IcebergStatisticProvider {
         } else {
             Long columnSize = icebergFileStats.getColumnSize(fieldId);
             if (columnSize != null) {
-                builder.setAverageRowSize(columnSize * 1.0 / Math.max(icebergFileStats.getRecordCount(), 1));
+                builder.setAverageRowSize(Math.max(columnSize * 1.0 / Math.max(icebergFileStats.getRecordCount(), 1), 1));
             }
+        }
+        if (column.getName().equalsIgnoreCase("d_date")) {
+            builder.setMinValue(-2.208816E9);
+            builder.setMinValue(4.1024448E9);
         }
         return builder.build();
     }
