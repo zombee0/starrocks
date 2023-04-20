@@ -20,6 +20,7 @@ package com.starrocks.connector.iceberg.cost;
 import org.apache.iceberg.types.Type;
 import org.apache.iceberg.types.Types;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 public class StatUtils {
@@ -37,6 +38,12 @@ public class StatUtils {
             valueConvert = (float) value;
         } else if (type instanceof Types.DoubleType) {
             valueConvert = (double) value;
+        } else if (type instanceof Types.TimeType) {
+            valueConvert = (long) value;
+        } else if (type instanceof Types.DateType) {
+            valueConvert = (long) value;
+        } else if (type instanceof Types.DecimalType) {
+            valueConvert = ((BigDecimal) value).doubleValue();
         } else {
             return Optional.empty();
         }
