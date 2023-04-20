@@ -41,7 +41,7 @@ public class StatUtils {
         } else if (type instanceof Types.TimeType) {
             valueConvert = (long) value;
         } else if (type instanceof Types.DateType) {
-            valueConvert = (long) value;
+            valueConvert = (int) value;
         } else if (type instanceof Types.DecimalType) {
             valueConvert = ((BigDecimal) value).doubleValue();
         } else {
