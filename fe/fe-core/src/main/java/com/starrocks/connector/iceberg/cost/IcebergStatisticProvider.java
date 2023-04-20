@@ -203,7 +203,7 @@ public class IcebergStatisticProvider {
         ColumnStatistic.Builder builder = ColumnStatistic.builder();
         Long ndv = columnNdvs.get(fieldId);
         if (ndv != null) {
-            builder.setDistinctValuesCount(ndv);
+            builder.setDistinctValuesCount(Math.min(ndv, icebergFileStats.getRecordCount()));
         }
 
         if (icebergFileStats.getMinValue(fieldId).isPresent()) {
