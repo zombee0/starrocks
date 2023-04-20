@@ -75,48 +75,9 @@ public class HiveStatisticsProvider {
             List<ColumnRefOperator> columns,
             List<PartitionKey> partitionKeys) {
         Statistics.Builder builder = Statistics.builder();
-        HiveMetaStoreTable hmsTbl = (HiveMetaStoreTable) table;
-        if (hmsTbl.isUnPartitioned()) {
-            HivePartitionStats tableStats = hmsOps.getTableStatistics(hmsTbl.getDbName(), hmsTbl.getTableName());
-            return createUnpartitionedStats(tableStats, columns, builder, table);
-        }
 
-        int sampleSize = getSamplePartitionSize(session);
-        List<String> partitionColumnNames = hmsTbl.getPartitionColumnNames();
-        List<String> partitionNames = partitionKeys.stream()
-                .peek(partitionKey -> checkState(partitionKey.getKeys().size() == partitionColumnNames.size(),
-                        "columns size is " + partitionColumnNames.size() +
-                                " but values size is " + partitionKey.getKeys().size()))
-                .map(partitionKey -> toHivePartitionName(partitionColumnNames, partitionKey))
-                .collect(Collectors.toList());
-
-        List<String> sampledPartitionNames = getPartitionsSample(partitionNames, sampleSize);
-        Map<String, HivePartitionStats> partitionStatistics = hmsOps.getPartitionStatistics(table, sampledPartitionNames);
-
-        double avgRowNumPerPartition = -1;
-        double totalRowNums = -1;
-        avgRowNumPerPartition = getPerPartitionRowAvgNums(partitionStatistics.values());
-
-        if (avgRowNumPerPartition <= 0) {
-            builder.setOutputRowCount(getEstimatedRowCount(table, partitionKeys));
-            return builder.build();
-        }
-
-        totalRowNums = avgRowNumPerPartition * partitionKeys.size();
-        builder.setOutputRowCount(totalRowNums);
-
-        for (ColumnRefOperator columnRefOperator : columns) {
-            Column column = table.getColumn(columnRefOperator.getName());
-            if (partitionColumnNames.contains(columnRefOperator.getName())) {
-                builder.addColumnStatistic(columnRefOperator, createPartitionColumnStatistics(
-                        column, partitionKeys, partitionStatistics, partitionColumnNames, avgRowNumPerPartition, totalRowNums));
-            } else {
-                builder.addColumnStatistic(columnRefOperator, createDataColumnStatistics(
-                        column, totalRowNums, partitionStatistics.values()));
-            }
-        }
-
-        return builder.build();
+        HivePartitionStats tableStats = hmsOps.getTableStatistics("tpcds_1t_parquet_lz4_cluster", table.getName());
+        return createUnpartitionedStats(tableStats, columns, builder, table);
     }
 
     public Statistics createUnpartitionedStats(

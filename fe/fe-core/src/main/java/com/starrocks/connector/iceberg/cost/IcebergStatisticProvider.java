@@ -228,19 +228,6 @@ public class IcebergStatisticProvider {
                 builder.setAverageRowSize(Math.max(columnSize * 1.0 / Math.max(icebergFileStats.getRecordCount(), 1), 1));
             }
         }
-        if (column.getName().equalsIgnoreCase("d_date")) {
-            builder.setMinValue(-2.208816E9);
-            builder.setMaxValue(4.1024448E9);
-        }
-        if (column.getName().equalsIgnoreCase("w_warehouse_name")) {
-            builder.setAverageRowSize(15.35);
-        }
-        if (column.getName().equalsIgnoreCase("hd_buy_potential")) {
-            builder.setAverageRowSize(7.5);
-        }
-        if (column.getName().equalsIgnoreCase("i_item_desc")) {
-            builder.setAverageRowSize(100.31114);
-        }
         return builder.build();
     }
 
