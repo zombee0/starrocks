@@ -40,9 +40,7 @@ public enum HiveTableValidator {
             } else {
                 // for iceberg table, must contain metadata location in parameters
                 // TODO(zombee0), check hudi deltalake
-                if (table.getParameters() != null &&
-                        table.getParameters().get(TABLE_TYPE_PROP) != null &&
-                        table.getParameters().get(TABLE_TYPE_PROP).equalsIgnoreCase(ICEBERG_TABLE_TYPE_VALUE)) {
+                if (isIcebergTable(table)) {
                     if (table.getParameters().get(METADATA_LOCATION_PROP) == null) {
                         missingProperty = "MetadataLocation";
                     }
@@ -57,6 +55,12 @@ public enum HiveTableValidator {
             }
         }
     };
+
+    public static boolean isIcebergTable(Table table) {
+        return table.getParameters() != null &&
+                table.getParameters().get(TABLE_TYPE_PROP) != null &&
+                table.getParameters().get(TABLE_TYPE_PROP).equalsIgnoreCase(ICEBERG_TABLE_TYPE_VALUE);
+    }
 
     public abstract void validate(Table table);
 

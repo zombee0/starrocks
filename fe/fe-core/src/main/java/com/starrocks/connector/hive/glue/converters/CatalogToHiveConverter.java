@@ -19,6 +19,7 @@ import com.amazonaws.services.glue.model.ErrorDetail;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
+import com.starrocks.connector.hive.glue.util.HiveTableValidator;
 import org.apache.hadoop.hive.metastore.api.AlreadyExistsException;
 import org.apache.hadoop.hive.metastore.api.Database;
 import org.apache.hadoop.hive.metastore.api.FieldSchema;
@@ -50,8 +51,6 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 
 import static org.apache.commons.lang3.ObjectUtils.firstNonNull;
-import static org.apache.iceberg.BaseMetastoreTableOperations.ICEBERG_TABLE_TYPE_VALUE;
-import static org.apache.iceberg.BaseMetastoreTableOperations.TABLE_TYPE_PROP;
 
 public class CatalogToHiveConverter {
 
@@ -157,8 +156,7 @@ public class CatalogToHiveConverter {
         // for iceberg table, don't need to set StorageDescriptor
         // just use metadata location in parameters that checked in HiveTableValidator
         // TODO(zombee0), check hudi deltalake
-        if (catalogTable.getParameters() == null || catalogTable.getParameters().get(TABLE_TYPE_PROP) == null ||
-                (!catalogTable.getParameters().get(TABLE_TYPE_PROP).equalsIgnoreCase(ICEBERG_TABLE_TYPE_VALUE))) {
+        if (!HiveTableValidator.isIcebergTable(catalogTable)) {
             hiveTable.setSd(convertStorageDescriptor(catalogTable.getStorageDescriptor()));
         }
         hiveTable.setPartitionKeys(convertFieldSchemaList(catalogTable.getPartitionKeys()));
