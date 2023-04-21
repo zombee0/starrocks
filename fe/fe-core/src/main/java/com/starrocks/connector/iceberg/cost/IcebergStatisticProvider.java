@@ -230,7 +230,7 @@ public class IcebergStatisticProvider {
         }
         if (column.getName().equalsIgnoreCase("d_date")) {
             builder.setMinValue(-2.208816E9);
-            builder.setMaxValue(4.1024448E9);
+            builder.setMinValue(4.1024448E9);
         }
         return builder.build();
     }
