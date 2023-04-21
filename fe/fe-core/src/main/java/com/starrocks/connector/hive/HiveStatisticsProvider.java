@@ -50,6 +50,7 @@ import java.util.TimeZone;
 import java.util.stream.Collectors;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Maps.immutableEntry;
 import static com.starrocks.connector.PartitionUtil.toHivePartitionName;
 import static java.lang.Double.NEGATIVE_INFINITY;
