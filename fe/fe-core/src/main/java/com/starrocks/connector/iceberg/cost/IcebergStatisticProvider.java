@@ -225,7 +225,7 @@ public class IcebergStatisticProvider {
         } else {
             Long columnSize = icebergFileStats.getColumnSize(fieldId);
             if (columnSize != null) {
-                builder.setAverageRowSize(columnSize * 1.0 / Math.max(icebergFileStats.getRecordCount(), 1));
+                builder.setAverageRowSize(Math.max(columnSize * 1.0 / Math.max(icebergFileStats.getRecordCount(), 1), 1));
             }
         }
         return builder.build();
