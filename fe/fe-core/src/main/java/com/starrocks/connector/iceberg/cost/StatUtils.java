@@ -38,10 +38,14 @@ public class StatUtils {
             valueConvert = (float) value;
         } else if (type instanceof Types.DoubleType) {
             valueConvert = (double) value;
-        } else if (type instanceof Types.TimeType) {
-            valueConvert = (long) value;
+        } else if (type instanceof Types.TimestampType) {
+            // we deal iceberg TimestampType as seconds in columnstatistics
+            // in iceberg it's microsecond
+            valueConvert = (long) value / 1000000;
         } else if (type instanceof Types.DateType) {
-            valueConvert = (int) value;
+            // we deal iceberg DateType as seconds in columnstatistics
+            // in iceberg it's num of day from 1970-01-01
+            valueConvert = (int) value * 86400;
         } else if (type instanceof Types.DecimalType) {
             valueConvert = ((BigDecimal) value).doubleValue();
         } else {
