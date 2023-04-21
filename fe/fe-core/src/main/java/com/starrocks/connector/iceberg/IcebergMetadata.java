@@ -31,11 +31,8 @@ import com.starrocks.connector.PartitionUtil;
 import com.starrocks.connector.RemoteFileDesc;
 import com.starrocks.connector.RemoteFileInfo;
 import com.starrocks.connector.exception.StarRocksConnectorException;
-import com.starrocks.connector.hive.HiveConnector;
-import com.starrocks.connector.hive.HiveMetadata;
 import com.starrocks.connector.iceberg.cost.IcebergMetricsReporter;
 import com.starrocks.connector.iceberg.cost.IcebergStatisticProvider;
-import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.PlannerProfile;
 import com.starrocks.sql.ast.CreateTableStmt;
 import com.starrocks.sql.ast.DropTableStmt;
@@ -98,7 +95,6 @@ public class IcebergMetadata implements ConnectorMetadata {
     private final String catalogName;
     private final IcebergCatalog icebergCatalog;
     private final IcebergStatisticProvider statisticProvider = new IcebergStatisticProvider();
-    private final HiveConnector connector;
 
     private final Map<TableIdentifier, Table> tables = new ConcurrentHashMap<>();
     private final Map<IcebergFilter, List<FileScanTask>> tasks = new ConcurrentHashMap<>();
@@ -106,7 +102,6 @@ public class IcebergMetadata implements ConnectorMetadata {
     public IcebergMetadata(String catalogName, IcebergCatalog icebergCatalog) {
         this.catalogName = catalogName;
         this.icebergCatalog = icebergCatalog;
-        this.connector = (HiveConnector) GlobalStateMgr.getCurrentState().getConnectorMgr().getConnector("glue_test");
     }
 
     @Override
@@ -294,8 +289,7 @@ public class IcebergMetadata implements ConnectorMetadata {
                                          Map<ColumnRefOperator, Column> columns,
                                          List<PartitionKey> partitionKeys,
                                          ScalarOperator predicate) {
-        // return statisticProvider.getTableStatistics((IcebergTable) table, predicate, columns);
-        return connector.getMetadata().getTableStatistics(session, table, columns, partitionKeys, predicate);
+        return statisticProvider.getTableStatistics((IcebergTable) table, predicate, columns);
     }
 
     @Override
