@@ -15,20 +15,19 @@
 
 package com.starrocks.connector.iceberg.cost;
 
+import com.google.common.collect.Lists;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.connector.RemoteFileDesc;
 import com.starrocks.connector.RemoteFileInfo;
-import com.starrocks.qe.ConnectContext;
+import com.starrocks.connector.iceberg.CachingBaseMetastoreCatalog;
+import com.starrocks.connector.iceberg.IcebergCatalog;
+import com.starrocks.connector.statistics.ExternalTableColumnStat;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
-import com.starrocks.sql.optimizer.statistics.ColumnBasicStatsCacheLoader;
 import com.starrocks.sql.optimizer.statistics.ColumnStatistic;
 import com.starrocks.sql.optimizer.statistics.Statistics;
-import com.starrocks.statistic.StatisticExecutor;
-import com.starrocks.statistic.StatisticUtils;
-import com.starrocks.thrift.TStatisticData;
 import org.apache.iceberg.DataFile;
 import org.apache.iceberg.FileScanTask;
 import org.apache.iceberg.PartitionField;
@@ -39,7 +38,6 @@ import org.apache.iceberg.types.Types;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -47,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
@@ -56,19 +53,26 @@ import static com.starrocks.connector.ColumnTypeConverter.fromIcebergType;
 
 public class IcebergStatisticProvider {
     private static final Logger LOG = LogManager.getLogger(IcebergStatisticProvider.class);
+    private IcebergCatalog icebergcatalog;
 
     public IcebergStatisticProvider() {
+    }
+
+    public IcebergStatisticProvider(IcebergCatalog icebergCatalog) {
+        this.icebergcatalog = icebergCatalog;
     }
 
     public Statistics getTableStatistics(IcebergTable icebergTable, ScalarOperator predicate,
                                          Map<ColumnRefOperator, Column> colRefToColumnMetaMap) {
         LOG.debug("Begin to make iceberg table statistics!");
         long start = System.currentTimeMillis();
-        Statistics srStatistics = getSRTableStatistics(icebergTable, colRefToColumnMetaMap);
-        if (srStatistics != null) {
-            long time = System.currentTimeMillis() - start;
-            LOG.warn("Getting statistics from native statistics table takes time {}", time);
-            return srStatistics;
+        if (icebergcatalog instanceof CachingBaseMetastoreCatalog) {
+            Statistics srStatistics = getSRTableStatistics(icebergTable, colRefToColumnMetaMap);
+            if (srStatistics != null) {
+                long time = System.currentTimeMillis() - start;
+                LOG.warn("Getting statistics from native statistics table takes time {}", time);
+                return srStatistics;
+            }
         }
         Table nativeTable = icebergTable.getNativeTable();
         IcebergFileStats icebergFileStats = generateIcebergFileStats(icebergTable, predicate);
@@ -83,26 +87,26 @@ public class IcebergStatisticProvider {
 
     private Statistics getSRTableStatistics(IcebergTable icebergTable,
                                             Map<ColumnRefOperator, Column> colRefToColumnMetaMap) {
-        ConnectContext statsConnectCtx = StatisticUtils.buildConnectContext();
-        statsConnectCtx.setThreadLocalInfo();
-        StatisticExecutor statisticExecutor = new StatisticExecutor();
-        Map<String, Column> nameToColumn = colRefToColumnMetaMap.values().stream().
-                collect(Collectors.toMap(Column::getName, Function.identity()));
         Map<String, ColumnRefOperator> nameToColRef = colRefToColumnMetaMap.entrySet().stream().
                 collect(Collectors.toMap(entry -> entry.getValue().getName(), entry -> entry.getKey()));
-        List<TStatisticData> tStatisticDatas = statisticExecutor.queryStatisticSync(statsConnectCtx, icebergTable.getUUID(),
-                new ArrayList<>(nameToColumn.keySet()));
-        if (tStatisticDatas.isEmpty()) {
-            return null;
-        } else {
+        List<String> columnNames = Lists.newArrayList(nameToColRef.keySet());
+        List<Optional<ExternalTableColumnStat>> columnStatistics = ((CachingBaseMetastoreCatalog) icebergcatalog).
+                getColumnStatistics(icebergTable.getUUID(), columnNames);
+        if (columnStatistics.stream().anyMatch(Optional::isPresent)) {
             Statistics.Builder statisticsBuilder = Statistics.builder();
-            for (TStatisticData data : tStatisticDatas) {
-                Column column = nameToColumn.get(data.columnName);
-                ColumnStatistic columnStatistic = ColumnBasicStatsCacheLoader.buildColumnStatistics(data, column);
-                statisticsBuilder.addColumnStatistic(nameToColRef.get(data.columnName), columnStatistic);
+            for (int i = 0; i < columnNames.size(); i++) {
+                if (columnStatistics.get(i).isPresent()) {
+                    statisticsBuilder.addColumnStatistic(nameToColRef.get(columnNames.get(i)),
+                            columnStatistics.get(i).get().getColumnStatistic());
+                    statisticsBuilder.setOutputRowCount(columnStatistics.get(i).get().getRowCount());
+                } else {
+                    statisticsBuilder.addColumnStatistic(nameToColRef.get(columnNames.get(i)), ColumnStatistic.unknown());
+                }
+
             }
-            statisticsBuilder.setOutputRowCount(tStatisticDatas.get(0).rowCount);
             return statisticsBuilder.build();
+        } else {
+            return null;
         }
     }
 

@@ -94,7 +94,7 @@ public class IcebergMetadata implements ConnectorMetadata {
     private static final Logger LOG = LogManager.getLogger(IcebergMetadata.class);
     private final String catalogName;
     private final IcebergCatalog icebergCatalog;
-    private final IcebergStatisticProvider statisticProvider = new IcebergStatisticProvider();
+    private final IcebergStatisticProvider statisticProvider;
 
     private final Map<TableIdentifier, Table> tables = new ConcurrentHashMap<>();
     private final Map<IcebergFilter, List<FileScanTask>> tasks = new ConcurrentHashMap<>();
@@ -102,6 +102,7 @@ public class IcebergMetadata implements ConnectorMetadata {
     public IcebergMetadata(String catalogName, IcebergCatalog icebergCatalog) {
         this.catalogName = catalogName;
         this.icebergCatalog = icebergCatalog;
+        this.statisticProvider = new IcebergStatisticProvider(icebergCatalog);
     }
 
     @Override
