@@ -43,6 +43,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.nio.ByteBuffer;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -61,6 +63,12 @@ public class IcebergApiConverter {
 
     public static IcebergTable toIcebergTable(Table nativeTbl, String catalogName, String remoteDbName,
                                               String remoteTableName, String nativeCatalogType) {
+        if (nativeTbl.spec().isPartitioned()) {
+            List<IcebergPartitionUtils.IcebergPartition> partitions = IcebergPartitionUtils.changedPartition(nativeTbl,
+                    LocalDateTime.now().atZone(ZoneId.systemDefault()).
+                            minusYears(1).toEpochSecond() * 1000);
+            System.out.println(partitions);
+        }
         IcebergTable.Builder tableBuilder = IcebergTable.builder()
                 .setId(CONNECTOR_ID_GENERATOR.getNextId().asInt())
                 .setSrTableName(remoteTableName)
