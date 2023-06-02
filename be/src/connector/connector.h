@@ -91,6 +91,8 @@ public:
         runtime_bloom_filter_eval_context.driver_sequence = driver_sequence;
     }
 
+    virtual bool support_push_down_runtime_filter_to_reader() const { return false; }
+
 protected:
     int64_t _read_limit = -1; // no limit
     bool _has_any_predicate = false;

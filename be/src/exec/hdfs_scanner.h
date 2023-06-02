@@ -369,6 +369,8 @@ public:
     void move_split_tasks(std::vector<pipeline::ScanSplitContextPtr>* split_tasks);
     bool has_split_tasks() const { return _scanner_ctx.has_split_tasks; }
 
+    virtual bool support_push_down_runtime_filter_to_reader() const { return false; }
+
 protected:
     static StatusOr<std::unique_ptr<RandomAccessFile>> create_random_access_file(
             std::shared_ptr<io::SharedBufferedInputStream>& shared_buffered_input_stream,

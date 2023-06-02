@@ -82,6 +82,13 @@ public:
 
     void get_split_tasks(std::vector<pipeline::ScanSplitContextPtr>* split_tasks) override;
     Status _init_chunk_if_needed(ChunkPtr* chunk, size_t n) override;
+    bool support_push_down_runtime_filter_to_reader() const override {
+        if (_scanner == nullptr) {
+            return false;
+        } else {
+            return _scanner->support_push_down_runtime_filter_to_reader();
+        }
+    }
 
 private:
     const HiveDataSourceProvider* _provider;

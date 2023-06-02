@@ -31,6 +31,7 @@
 #include "formats/parquet/metadata.h"
 #include "formats/parquet/page_index_reader.h"
 #include "formats/parquet/schema.h"
+#include "exprs/runtime_filter.h"
 #include "gutil/strings/substitute.h"
 #include "runtime/types.h"
 #include "simd/simd.h"
@@ -97,6 +98,7 @@ Status GroupReader::prepare() {
     }
 
     RETURN_IF_ERROR(_rewrite_conjunct_ctxs_to_predicates(&_is_group_filtered));
+    _process_runtime_filter();
     _init_read_chunk();
 
     if (!_is_group_filtered) {
@@ -389,6 +391,16 @@ bool GroupReader::_try_to_use_dict_filter(const GroupReaderParam::Column& column
         return true;
     } else {
         return false;
+    }
+}
+
+void GroupReader::_process_runtime_filter() {
+    for (auto& it : _param.runtime_filter_collector->descriptors()) {
+        RuntimeFilterProbeDescriptor* rf_desc = it.second;
+        const JoinRuntimeFilter* filter = rf_desc->runtime_filter();
+        SlotId probe_slot_id;
+        if (filter == nullptr || filter->has_null() || !rf_desc->is_probe_slot_ref(&probe_slot_id)) continue;
+        _runtime_filter_by_slot.insert({probe_slot_id, filter});
     }
 }
 

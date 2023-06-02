@@ -15,6 +15,7 @@
 #pragma once
 
 #include "exec/pipeline/pipeline_fwd.h"
+#include "exec/scan_node.h"
 #include "exec/pipeline/source_operator.h"
 #include "exec/query_cache/cache_operator.h"
 #include "exec/query_cache/lane_arbiter.h"
@@ -94,6 +95,8 @@ public:
     virtual bool is_running_all_io_tasks() const;
 
     virtual int64_t get_scan_table_id() const { return -1; }
+
+    virtual bool support_push_down_runtime_filter_to_reader() const { return _scan_node->support_push_down_runtime_filter_to_reader(); }
 
 protected:
     static constexpr size_t kIOTaskBatchSize = 64;

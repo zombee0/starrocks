@@ -67,6 +67,9 @@ public:
     bool output_chunk_by_bucket() const override { return _data_source_provider->output_chunk_by_bucket(); }
     bool is_asc_hint() const override { return _data_source_provider->is_asc_hint(); }
     std::optional<bool> partition_order_hint() const override { return _data_source_provider->partition_order_hint(); }
+    bool support_push_down_runtime_filter_to_reader() const override {
+        return _support_rf_push_down_to_reader;
+    }
 
 private:
     // non-pipeline methods.
@@ -150,5 +153,7 @@ private:
     std::atomic_bool _use_stream_load_thread_pool = false;
 #endif
     pipeline::ConnectorScanOperatorMemShareArbitrator* _mem_share_arb = nullptr;
+
+    bool _support_rf_push_down_to_reader = false;
 };
 } // namespace starrocks

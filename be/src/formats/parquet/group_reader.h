@@ -32,6 +32,8 @@
 #include "common/status.h"
 #include "common/statusor.h"
 #include "exprs/expr_context.h"
+#include "exprs/runtime_filter.h"
+#include "exprs/runtime_filter_bank.h"
 #include "formats/parquet/column_read_order_ctx.h"
 #include "formats/parquet/column_reader.h"
 #include "formats/parquet/metadata.h"
@@ -78,6 +80,9 @@ struct GroupReaderParam {
     const TupleDescriptor* tuple_desc = nullptr;
     // conjunct_ctxs that column is materialized in group reader
     std::unordered_map<SlotId, std::vector<ExprContext*>> conjunct_ctxs_by_slot;
+
+    // bloom filter
+    const RuntimeFilterProbeCollector* runtime_filter_collector = nullptr;
 
     // columns
     std::vector<Column> read_cols;
@@ -145,6 +150,7 @@ private:
     bool _try_to_use_dict_filter(const GroupReaderParam::Column& column, ExprContext* ctx,
                                  std::vector<std::string>& sub_field_path, bool is_decode_needed);
 
+    void _process_runtime_filter();
     void _init_read_chunk();
 
     Status _read_range(const std::vector<int>& read_columns, const Range<uint64_t>& range, const Filter* filter,
@@ -163,6 +169,8 @@ private:
 
     // conjunct ctxs that eval after chunk is dict decoded
     std::vector<ExprContext*> _left_conjunct_ctxs;
+
+    std::unordered_map<SlotId, const JoinRuntimeFilter*> _runtime_filter_by_slot;
 
     // active columns that hold read_col index
     std::vector<int> _active_column_indices;
