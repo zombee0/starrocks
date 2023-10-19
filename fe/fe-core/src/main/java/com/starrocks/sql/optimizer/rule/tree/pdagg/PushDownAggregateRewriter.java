@@ -138,6 +138,13 @@ public class PushDownAggregateRewriter extends OptExpressionVisitor<OptExpressio
         LogicalProjectOperator project = (LogicalProjectOperator) optExpression.getOp();
         Map<ColumnRefOperator, ScalarOperator> originProjectMap = Maps.newHashMap(project.getColumnRefMap());
 
+        if (!checkPushDownAggregateOverProject(context, originProjectMap)) {
+            LogicalAggregationOperator aggregate;
+            List<ColumnRefOperator> groupBys = Lists.newArrayList(context.groupBys.keySet());
+            aggregate = new LogicalAggregationOperator(AggType.GLOBAL, groupBys, context.aggregations);
+            return OptExpression.create(aggregate, optExpression);
+        }
+
         if (!originProjectMap.values().stream().allMatch(ScalarOperator::isColumnRef)) {
             rewriteProject(context, originProjectMap);
         }
@@ -147,6 +154,21 @@ public class PushDownAggregateRewriter extends OptExpressionVisitor<OptExpressio
                 LogicalProjectOperator.builder().withOperator(project).setColumnRefMap(originProjectMap).build(),
                 optExpression.getInputs());
         return processChild(newOpt, context);
+    }
+
+    private boolean checkPushDownAggregateOverProject(AggregatePushDownContext context,
+                                                   Map<ColumnRefOperator, ScalarOperator> originProjectMap) {
+        for (Map.Entry<ColumnRefOperator, ScalarOperator> entry : originProjectMap.entrySet()) {
+            if (!entry.getValue().isColumnRef()) {
+                if (context.groupBys.containsKey(entry.getKey())) {
+                    return false;
+                }
+                //if (context.aggregations.values().stream().anyMatch(x -> x.getChild(0) == entry.getKey())) {
+                //    return false;
+                //}
+            }
+        }
+        return true;
     }
 
     // rewrite groupBys/aggregation by project expression, maybe needs push down
