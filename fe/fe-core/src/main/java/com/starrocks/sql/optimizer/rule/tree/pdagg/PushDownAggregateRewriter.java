@@ -163,9 +163,6 @@ public class PushDownAggregateRewriter extends OptExpressionVisitor<OptExpressio
                 if (context.groupBys.containsKey(entry.getKey())) {
                     return false;
                 }
-                //if (context.aggregations.values().stream().anyMatch(x -> x.getChild(0) == entry.getKey())) {
-                //    return false;
-                //}
             }
         }
         return true;
