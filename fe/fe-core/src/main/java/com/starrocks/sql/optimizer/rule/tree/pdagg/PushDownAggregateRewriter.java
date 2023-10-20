@@ -150,9 +150,9 @@ public class PushDownAggregateRewriter extends OptExpressionVisitor<OptExpressio
             return OptExpression.create(aggregate, optExpression);
         }
 
-        if (!originProjectMap.values().stream().allMatch(ScalarOperator::isColumnRef)) {
-            rewriteProject(context, originProjectMap);
-        }
+        //if (!originProjectMap.values().stream().allMatch(ScalarOperator::isColumnRef)) {
+        rewriteProject(context, originProjectMap);
+        //}
 
         context.aggregations.keySet().forEach(k -> originProjectMap.put(k, k));
         OptExpression newOpt = OptExpression.create(
