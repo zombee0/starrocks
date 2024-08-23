@@ -151,6 +151,8 @@ Status HdfsScanner::_build_scanner_context() {
     ctx.split_context = _scanner_params.split_context;
     ctx.enable_split_tasks = _scanner_params.enable_split_tasks;
     ctx.connector_max_split_size = _scanner_params.connector_max_split_size;
+    ctx.enable_dynamic_prune_scan_range = _scanner_params.enable_dynamic_prune_scan_range;
+    ctx.runtime_bloom_filter_eval_context = _scanner_params.runtime_bloom_filter_eval_context;
     return Status::OK();
 }
 
@@ -551,6 +553,9 @@ StatusOr<bool> HdfsScannerContext::should_skip_by_evaluating_not_existed_slots()
     {
         SCOPED_RAW_TIMER(&stats->expr_filter_ns);
         RETURN_IF_ERROR(ExecNode::eval_conjuncts(conjunct_ctxs_of_non_existed_slots, chunk.get()));
+    }
+    if (enable_dynamic_prune_scan_range && runtime_filter_collector) {
+        runtime_filter_collector->evaluate_partial_chunk(chunk.get(), runtime_bloom_filter_eval_context);
     }
     return !(chunk->has_rows());
 }

@@ -221,6 +221,9 @@ struct HdfsScannerParams {
     MORParams mor_params;
 
     int64_t connector_max_split_size = 0;
+
+    bool enable_dynamic_prune_scan_range = false;
+    RuntimeBloomFilterEvalContext* runtime_bloom_filter_eval_context = nullptr;
 };
 
 struct HdfsScannerContext {
@@ -293,6 +296,9 @@ struct HdfsScannerContext {
     std::atomic<int32_t>* lazy_column_coalesce_counter;
 
     int64_t connector_max_split_size = 0;
+
+    bool enable_dynamic_prune_scan_range = false;
+    RuntimeBloomFilterEvalContext* runtime_bloom_filter_eval_context = nullptr;
 
     // update none_existed_slot
     // update conjunct

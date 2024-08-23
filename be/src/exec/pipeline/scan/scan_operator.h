@@ -96,8 +96,6 @@ public:
 
     virtual int64_t get_scan_table_id() const { return -1; }
 
-    virtual bool support_push_down_runtime_filter_to_reader() const { return _scan_node->support_push_down_runtime_filter_to_reader(); }
-
 protected:
     static constexpr size_t kIOTaskBatchSize = 64;
 

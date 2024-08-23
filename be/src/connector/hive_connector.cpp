@@ -264,7 +264,7 @@ Status HiveDataSource::_init_partition_values() {
 
     if (_enable_dynamic_prune_scan_range && _runtime_filters) {
         _init_rf_counters();
-        _runtime_filters->evaluate_partial_chunk(partition_chunk.get(), runtime_bloom_filter_eval_context);
+        _runtime_filters->evaluate_partial_chunk(partition_chunk.get(), _runtime_bloom_filter_eval_context);
         if (!partition_chunk->has_rows()) {
             _filter_by_eval_partition_conjuncts = true;
             return Status::OK();
@@ -522,18 +522,18 @@ void HiveDataSource::_init_counter(RuntimeState* state) {
 
 void HiveDataSource::_init_rf_counters() {
     auto* root = _runtime_profile;
-    if (runtime_bloom_filter_eval_context.join_runtime_filter_timer == nullptr) {
+    if (_runtime_bloom_filter_eval_context.join_runtime_filter_timer == nullptr) {
         static const char* prefix = "DynamicPruneScanRange";
         ADD_COUNTER(root, prefix, TUnit::NONE);
-        runtime_bloom_filter_eval_context.join_runtime_filter_timer =
+        _runtime_bloom_filter_eval_context.join_runtime_filter_timer =
                 ADD_CHILD_TIMER(root, "JoinRuntimeFilterTime", prefix);
-        runtime_bloom_filter_eval_context.join_runtime_filter_hash_timer =
+        _runtime_bloom_filter_eval_context.join_runtime_filter_hash_timer =
                 ADD_CHILD_TIMER(root, "JoinRuntimeFilterHashTime", prefix);
-        runtime_bloom_filter_eval_context.join_runtime_filter_input_counter =
+        _runtime_bloom_filter_eval_context.join_runtime_filter_input_counter =
                 ADD_CHILD_COUNTER(root, "JoinRuntimeFilterInputScanRanges", TUnit::UNIT, prefix);
-        runtime_bloom_filter_eval_context.join_runtime_filter_output_counter =
+        _runtime_bloom_filter_eval_context.join_runtime_filter_output_counter =
                 ADD_CHILD_COUNTER(root, "JoinRuntimeFilterOutputScanRanges", TUnit::UNIT, prefix);
-        runtime_bloom_filter_eval_context.join_runtime_filter_eval_counter =
+        _runtime_bloom_filter_eval_context.join_runtime_filter_eval_counter =
                 ADD_CHILD_COUNTER(root, "JoinRuntimeFilterEvaluate", TUnit::UNIT, prefix);
     }
 }
@@ -621,6 +621,8 @@ Status HiveDataSource::_init_scanner(RuntimeState* state) {
 
     scanner_params.can_use_any_column = _can_use_any_column;
     scanner_params.can_use_min_max_count_opt = _can_use_min_max_count_opt;
+    scanner_params.enable_dynamic_prune_scan_range = _enable_dynamic_prune_scan_range;
+    scanner_params.runtime_bloom_filter_eval_context = &_runtime_bloom_filter_eval_context;
 
     HdfsScanner* scanner = nullptr;
     auto format = scan_range.file_format;
