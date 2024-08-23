@@ -309,6 +309,7 @@ public:
         bool use_merged_selection;
         std::vector<uint32_t> hash_values;
         bool compatibility = true;
+        bool output_filter = false;
     };
 
     virtual void compute_partition_index(const RuntimeFilterLayout& layout, const std::vector<Column*>& columns,

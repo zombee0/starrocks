@@ -250,6 +250,7 @@ public:
     void evaluate(Chunk* chunk);
 
     void evaluate(Chunk* chunk, RuntimeBloomFilterEvalContext& eval_context);
+    void evaluate_to_filter(Chunk* chunk, RuntimeBloomFilterEvalContext& eval_context);
     // evaluate partial chunk that may not contain slots referenced by runtime filter
     void evaluate_partial_chunk(Chunk* partial_chunk, RuntimeBloomFilterEvalContext& eval_context);
     void add_descriptor(RuntimeFilterProbeDescriptor* desc);
@@ -276,6 +277,8 @@ public:
         return std::any_of(_descriptors.begin(), _descriptors.end(),
                            [](const auto& entry) { return entry.second->is_topn_filter(); });
     }
+
+    size_t get_slot_ids(std::vector<SlotId>* slot_ids) const;
 
 private:
     void update_selectivity(Chunk* chunk);

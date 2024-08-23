@@ -392,12 +392,14 @@ void RuntimeFilterProbeCollector::do_evaluate(Chunk* chunk, RuntimeBloomFilterEv
         return;
     }
 
-    auto& selection = eval_context.running_context.selection;
-    eval_context.running_context.use_merged_selection = false;
+    bool output_filter = eval_context.running_context.output_filter;
+
+    eval_context.running_context.use_merged_selection = output_filter;
     eval_context.running_context.compatibility =
             _runtime_state->func_version() <= 3 || !_runtime_state->enable_pipeline_engine();
 
     for (auto& kv : seletivity_map) {
+
         RuntimeFilterProbeDescriptor* rf_desc = kv.second;
         const JoinRuntimeFilter* filter = rf_desc->runtime_filter(eval_context.driver_sequence);
         if (filter == nullptr || filter->always_true()) {
@@ -409,14 +411,36 @@ void RuntimeFilterProbeCollector::do_evaluate(Chunk* chunk, RuntimeBloomFilterEv
         compute_hash_values(chunk, column.get(), rf_desc, eval_context);
         filter->evaluate(column.get(), &eval_context.running_context);
 
-        auto true_count = SIMD::count_nonzero(selection);
         eval_context.run_filter_nums += 1;
 
-        if (true_count == 0) {
-            chunk->set_num_rows(0);
-            return;
+        if (output_filter) {
+            if (eval_context.running_context.use_merged_selection) {
+                eval_context.running_context.use_merged_selection = false;
+            } else {
+                uint8_t* dest = eval_context.running_context.merged_selection.data();
+                const uint8_t* src = eval_context.running_context.selection.data();
+                for (size_t j = 0; j < chunk_size; ++j) {
+                    dest[j] = src[j] & dest[j];
+                }
+            }
+            auto true_count = SIMD::count_nonzero(eval_context.running_context.merged_selection);
+            if (true_count == 0) {
+                chunk->set_num_rows(0);
+                return;
+            }
         } else {
-            chunk->filter(selection);
+            auto& selection = eval_context.running_context.selection;
+            auto true_count = SIMD::count_nonzero(selection);
+            if (true_count == 0) {
+                chunk->set_num_rows(0);
+                return;
+            } else {
+                chunk->filter(selection);
+            }
+        }
+
+        if (output_filter) {
+            chunk->filter(eval_context.running_context.merged_selection);
         }
     }
 }
@@ -521,6 +545,22 @@ void RuntimeFilterProbeCollector::evaluate(Chunk* chunk, RuntimeBloomFilterEvalC
     }
 }
 
+void RuntimeFilterProbeCollector::evaluate_to_filter(Chunk* chunk, RuntimeBloomFilterEvalContext& eval_context) {
+    if (_descriptors.empty()) return;
+    if (chunk->num_rows() == 0) return;
+    {
+        SCOPED_TIMER(eval_context.join_runtime_filter_timer);
+        eval_context.join_runtime_filter_input_counter->update(before);
+        eval_context.run_filter_nums = 0;
+        eval_context.running_context.output_filter = true;
+        do_evaluate(chunk, eval_context, filter);
+        eval_context.running_context.output_filter = false;
+        size_t after = chunk->num_rows();
+        eval_context.join_runtime_filter_output_counter->update(after);
+        eval_context.join_runtime_filter_eval_counter->update(eval_context.run_filter_nums);
+    }
+}
+
 void RuntimeFilterProbeCollector::evaluate_partial_chunk(Chunk* partial_chunk,
                                                          RuntimeBloomFilterEvalContext& eval_context) {
     if (_descriptors.empty()) return;
@@ -596,6 +636,9 @@ void RuntimeFilterProbeCollector::update_selectivity(Chunk* chunk, RuntimeBloomF
             if (selectivity < _early_return_selectivity) { // very useful filter, could early return
                 seletivity_map.clear();
                 seletivity_map.emplace(selectivity, rf_desc);
+                if (eval_context.running_context.output_filter && !eval_context.running_context.use_merged_selection) {
+                    std::swap(eval_context.running_context.merged_selection, eval_context.running_context.selection);
+                }
                 chunk->filter(selection);
                 return;
             }
@@ -726,6 +769,26 @@ void RuntimeFilterProbeCollector::wait(bool on_scan_node) {
                       << ", ready = " << std::to_string(ready);
         }
     }
+}
+
+size_t RuntimeFilterProbeCollector::get_slot_ids(std::vector<SlotId>* slot_ids) const {
+    size_t n = 0;
+    for (auto kv : _descriptors) {
+        RuntimeFilterProbeDescriptor* rf_desc = kv.second;
+        const JoinRuntimeFilter* filter = rf_desc->runtime_filter(eval_context.driver_sequence);
+        if (filter == nullptr || filter->always_true()) {
+            continue;
+        }
+
+        auto* probe_expr = rf_desc->probe_expr_ctx();
+        auto* partition_by_exprs = rf_desc->partition_by_expr_contexts();
+
+        n += probe_expr->root()->get_slot_ids(&slot_ids);
+        for (auto* part_by_expr : *partition_by_exprs) {
+            n += part_by_expr->root()->get_slot_ids(&slot_ids);
+        }
+    }
+    return n;
 }
 
 void RuntimeFilterProbeDescriptor::set_runtime_filter(const JoinRuntimeFilter* rf) {

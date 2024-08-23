@@ -475,6 +475,36 @@ Status HdfsScannerContext::update_materialized_columns(const std::unordered_set<
     return Status::OK();
 }
 
+bool HdfsScannerContext::runtime_filter_only_use_materialized_column() const {
+    if (runtime_filter_collector == nullptr) {
+        return false;
+    }
+    std::vector<SlotId> slot_ids;
+    runtime_filter_collector->get_slot_ids(&slot_ids);
+    std::set<SlotId> mc;
+    for (auto column : materialized_columns) {
+        mc.insert(column.slot_id());
+    }
+    for (auto id : slot_ids) {
+        if (mc.find(id) == mc.end()) {
+            return false;
+        }
+    }
+    return true;
+}
+
+Status HdfsScannerContext::eval_runtime_filter(ChunkPtr* chunk, Filter* filter) const {
+    if (chunk == nullptr || chunk->is_empty()) {
+        return;
+    }
+
+    if (runtime_filter_collector == nullptr) {
+        return;
+    }
+
+    runtime_filter_collector->evaluate_to_filter(chunk, runtime_bloom_filter_eval_context);
+}
+
 Status HdfsScannerContext::append_or_update_not_existed_columns_to_chunk(ChunkPtr* chunk, size_t row_count) {
     if (not_existed_slots.empty()) return Status::OK();
     ChunkPtr& ck = (*chunk);

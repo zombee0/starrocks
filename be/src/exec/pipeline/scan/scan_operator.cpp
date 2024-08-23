@@ -19,6 +19,7 @@
 #include "column/chunk.h"
 #include "common/status.h"
 #include "common/statusor.h"
+#include "exec/exec_node.h"
 #include "exec/olap_scan_node.h"
 #include "exec/pipeline/limit_operator.h"
 #include "exec/pipeline/pipeline_builder.h"
@@ -260,6 +261,8 @@ StatusOr<ChunkPtr> ScanOperator::pull_chunk(RuntimeState* state) {
         auto [owner_id, is_eos] = _should_emit_eos(res);
         if (!_scan_node->support_push_down_runtime_filter_to_reader()) {
             eval_runtime_bloom_filters(res.get());
+        } else {
+            ExecNode::eval_filter_null_values(chunk, _factory->get_filter_null_value_columns());
         }
         res->owner_info().set_owner_id(owner_id, is_eos);
     }
