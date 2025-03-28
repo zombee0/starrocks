@@ -46,6 +46,11 @@ public:
     //
     virtual StatusOr<std::string_view> peek(int64_t nbytes) { return Status::NotSupported("InputStream::peek"); }
 
+    // Return zero-copy string_view to upcoming bytes.
+    // Different from peek, it will try to load data, and return as much as possible length
+    // TODO but no more than nbytes
+    virtual StatusOr<std::string_view> try_peek() { return Status::NotSupported("InputStream::try_peek"); }
+
     // Get statistics about the reads which this InputStream has done.
     // If the InputStream implementation doesn't support statistics, a null pointer or
     // an empty statistics is returned.

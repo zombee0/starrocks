@@ -214,6 +214,10 @@ StatusOr<Slice> PageReader::read_and_decompress_page_data() {
 
 StatusOr<Slice> PageReader::_read_and_decompress_internal(bool need_fill_buf) {
     bool is_compressed = _codec != tparquet::CompressionCodec::UNCOMPRESSED;
+
+
+
+
     if (is_compressed && _compress_codec == nullptr) {
         auto compress_type = ParquetUtils::convert_compression_codec(_codec);
         RETURN_IF_ERROR(get_block_compression_codec(compress_type, &_compress_codec));

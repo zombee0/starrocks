@@ -89,6 +89,32 @@ StatusOr<int64_t> CompressedInputStream::read(void* data, int64_t size) {
     return output_bytes;
 }
 
+StatusOr<size_t> CompressedInputStream::fill(void* data, size_t length, size_t limit) {
+    size_t output_len = limit;
+    size_t output_bytes = 0;
+
+    while (output_bytes < length) {
+        auto ret = _source_stream->try_peek();
+        // TODO deal with not ok
+        if (ret.ok) {
+            std::string_view view = ret.value();
+            RETURN_IF_ERROR(_source_stream->skip(view.size()));
+            Slice compressed_data = Slice(view.data(), view.size());
+            auto* output = reinterpret_cast<uint8_t*>(data);
+            size_t input_bytes_read = 0;
+            size_t output_bytes_written = 0;
+
+            RETURN_IF_ERROR(_decompressor->decompress((uint8_t*)compressed_data.data, compressed_data.size,
+                                                      &input_bytes_read, output, output_len, &output_bytes_written,
+                                                      &_stream_end));
+
+            DCHECK_EQ(input_bytes_read, view.size());
+            output_bytes += output_len;
+        }
+    }
+    return output_bytes;
+}
+
 Status CompressedInputStream::skip(int64_t n) {
     raw::RawVector<uint8_t> buff;
     buff.resize(n);
