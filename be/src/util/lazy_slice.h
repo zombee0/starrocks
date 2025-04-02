@@ -46,7 +46,7 @@ class Filler {
 public:
     virtual ~Filler() = default;
     virtual StatusOr<size_t> fill(char* data, size_t length, size_t limit) = 0;
-}
+};
 
 class DecompressFiller : public Filler {
 public:
@@ -57,7 +57,7 @@ public:
 
 private:
     std::unique_ptr<io::CompressedInputStream> _source_stream;
-}
+};
 
 class LazySlice {
 public:
@@ -66,9 +66,9 @@ public:
     Status try_to_trigger_fill(size_t offset, size_t length) {
         if (offset + length > _filled) {
             ASSIGN_OR_RETURN(auto fill_size, _filler->fill(_data + _filled, length, _size - _filled));
-            _filled + = fill_size;
+            _filled += fill_size;
         }
-        return Status::OK;
+        return Status::OK();
     }
 
 private:

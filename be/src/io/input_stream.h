@@ -24,6 +24,12 @@ namespace starrocks::io {
 
 class NumericStatistics;
 
+class ZeroCopyInputStream {
+public:
+    virtual ~ZeroCopyInputStream() = default;
+    virtual bool next(const void** data, int* size) = 0;
+};
+
 // InputStream is the superclass of all classes representing an input stream of bytes.
 class InputStream : public Readable {
 public:
@@ -49,7 +55,7 @@ public:
     // Return zero-copy string_view to upcoming bytes.
     // Different from peek, it will try to load data, and return as much as possible length
     // TODO but no more than nbytes
-    virtual StatusOr<std::string_view> try_peek() { return Status::NotSupported("InputStream::try_peek"); }
+    virtual StatusOr<std::unique_ptr<ZeroCopyInputStream>> try_peek() { return Status::NotSupported("InputStream::try_peek"); }
 
     // Get statistics about the reads which this InputStream has done.
     // If the InputStream implementation doesn't support statistics, a null pointer or

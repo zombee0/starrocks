@@ -96,20 +96,26 @@ StatusOr<size_t> CompressedInputStream::fill(void* data, size_t length, size_t l
     while (output_bytes < length) {
         auto ret = _source_stream->try_peek();
         // TODO deal with not ok
-        if (ret.ok) {
-            std::string_view view = ret.value();
-            RETURN_IF_ERROR(_source_stream->skip(view.size()));
-            Slice compressed_data = Slice(view.data(), view.size());
-            auto* output = reinterpret_cast<uint8_t*>(data);
+        if (ret.ok()) {
+            auto zero_copy_stream = ret.value();
             size_t input_bytes_read = 0;
             size_t output_bytes_written = 0;
+            const char* data = nullptr;
+            int read_size = 0;
+            size_t write_size = 0;
 
-            RETURN_IF_ERROR(_decompressor->decompress((uint8_t*)compressed_data.data, compressed_data.size,
-                                                      &input_bytes_read, output, output_len, &output_bytes_written,
-                                                      &_stream_end));
-
-            DCHECK_EQ(input_bytes_read, view.size());
-            output_bytes += output_len;
+            while (output_len && zero_copy_stream.next(&data, &read_size)) {
+                Slice compressed_data = Slice(data, read_size);
+                auto* output = reinterpret_cast<uint8_t*>(data) + write_size;
+                RETURN_IF_ERROR(_decompressor->decompress((uint8_t*)compressed_data.data, compressed_data.size,
+                                                          &input_bytes_read, output, output_len, &output_bytes_written,
+                                                          &_stream_end));
+                output_len -= output_bytes_written;
+                write_size += output_bytes_written;
+                read_size += input_bytes_read;
+                DCHECK(ouput_len == 0 || input_bytes_read == read_size)
+            }
+            RETURN_IF_ERROR(_source_stream->skip(read_size));
         }
     }
     return output_bytes;
