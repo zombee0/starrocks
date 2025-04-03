@@ -138,6 +138,7 @@ public:
     bool next(const void** data, int* size) {
         if (_limit > 0) {
             *data = _sb->buffer.data() + _offset;
+            *size = _limit;
             _limit = 0;
             return true;
         }

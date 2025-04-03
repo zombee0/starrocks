@@ -217,6 +217,7 @@ StatusOr<Slice> PageReader::read_and_decompress_page_data() {
 }
 
 StatusOr<Slice> PageReader::_read_and_decompress_internal(bool need_fill_buf) {
+    RETURN_IF_ERROR(_stream->seek(_offset));
     bool is_compressed = _codec != tparquet::CompressionCodec::UNCOMPRESSED;
     // TODO deal with uncompressed data
     if (!is_compressed) {

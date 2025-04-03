@@ -380,12 +380,12 @@ StatusOr<std::string_view> CacheInputStream::peek(int64_t count) {
 }
 
 StatusOr<std::unique_ptr<ZeroCopyInputStream>> CacheInputStream::try_peek() {
-    if (limit <= 0) {
+    if (_offset >= _size) {
         return Status::EndOfFile("");
     }
+
     const int64_t block_id = _offset / _block_size;
 
-    // check shared buffer
     int64_t block_offset = block_id * _block_size;
     int64_t load_size = std::min(_block_size, _size - block_offset);
     int64_t shift = _offset - block_offset;
@@ -401,7 +401,7 @@ StatusOr<std::unique_ptr<ZeroCopyInputStream>> CacheInputStream::try_peek() {
     SharedBufferPtr sb = nullptr;
     {
         // try to find data from shared buffer
-        auto ret = _sb_stream->find_shared_buffer(_offset, load_size);
+        auto ret = _sb_stream->find_shared_buffer(_offset, 1);
         if (ret.ok()) {
             sb = ret.value();
             if (sb->buffer.capacity() > 0) {
@@ -410,7 +410,7 @@ StatusOr<std::unique_ptr<ZeroCopyInputStream>> CacheInputStream::try_peek() {
                 if (_enable_populate_cache) {
                     // TODO check
                     _populate_to_cache((const char*)sb->buffer.data() + block_offset - sb->offset, block_offset,
-                                       load_size, sb);
+                                       std::min(load_size, sb->offset + sb->size - _offset), sb);
                 }
                 return std::move(zero_copy_stream);
             }
@@ -465,12 +465,12 @@ StatusOr<std::unique_ptr<ZeroCopyInputStream>> CacheInputStream::try_peek() {
             const uint8_t* buffer = nullptr;
             {
                 SCOPED_RAW_TIMER(&read_remote_ns);
-                RETURN_IF_ERROR(_sb_stream->get_bytes(&buffer, block_offset, load_size, sb));
+                RETURN_IF_ERROR(_sb_stream->get_bytes(&buffer, block_offset, 1, sb));
             }
 
             _deduplicate_shared_buffer(sb);
             if (_enable_populate_cache) {
-                _populate_to_cache(buffer, block_offset, load_size, sb);
+                _populate_to_cache((char*)buffer, block_offset, std::min(load_size, sb->offset + sb->size - _offset), sb);
             }
 
             if (_enable_cache_io_adaptor) {
