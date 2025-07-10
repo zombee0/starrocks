@@ -142,7 +142,6 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
         EquivalentDescriptor leftDesc = leftScanDistributionSpec.getEquivDesc();
         EquivalentDescriptor rightDesc = rightScanDistributionSpec.getEquivDesc();
 
-
         ColocateTableIndex colocateIndex = GlobalStateMgr.getCurrentState().getColocateTableIndex();
         long leftTableId = leftDesc.getTableId();
         long rightTableId = rightDesc.getTableId();
@@ -614,7 +613,6 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
     public PhysicalPropertySet visitPhysicalValues(PhysicalValuesOperator node, ExpressionContext context) {
         return createGatherPropertySet();
     }
-
 
     private void updatePropertyWithProjection(Projection projection, PhysicalPropertySet oldProperty) {
         if (projection == null) {

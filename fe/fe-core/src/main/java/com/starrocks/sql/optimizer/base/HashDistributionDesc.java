@@ -129,8 +129,6 @@ public class HashDistributionDesc {
         return true;
     }
 
-
-
     public boolean isLocal() {
         return this.sourceType == SourceType.LOCAL;
     }
