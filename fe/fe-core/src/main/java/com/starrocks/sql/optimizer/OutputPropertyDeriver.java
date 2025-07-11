@@ -20,7 +20,10 @@ import com.google.common.collect.Maps;
 import com.google.common.collect.Sets;
 import com.starrocks.analysis.JoinOperator;
 import com.starrocks.catalog.ColocateTableIndex;
+import com.starrocks.catalog.Column;
+import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.system.SystemTable;
+import com.starrocks.connector.BucketProperty;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.optimizer.base.CTEProperty;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
@@ -44,6 +47,7 @@ import com.starrocks.sql.optimizer.operator.physical.PhysicalExceptOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalFilterOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHashAggregateOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalHashJoinOperator;
+import com.starrocks.sql.optimizer.operator.physical.PhysicalIcebergScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalIntersectOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalJDBCScanOperator;
 import com.starrocks.sql.optimizer.operator.physical.PhysicalJoinOperator;
@@ -78,6 +82,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkState;
+import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.BUCKET_LOCAL;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.LOCAL;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_AGG;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_JOIN;
@@ -335,7 +340,9 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
             HashDistributionDesc leftDistributionDesc = leftDistributionSpec.getHashDistributionDesc();
             HashDistributionDesc rightDistributionDesc = rightDistributionSpec.getHashDistributionDesc();
 
-            if (leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) {
+            if ((leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) ||
+                    //TODO bucket function
+                    (leftDistributionDesc.isBucketLocal() && rightDistributionDesc.isBucketLocal())) {
                 // colocate join
                 PhysicalPropertySet outputProperty = computeColocateJoinOutputProperty(node.getJoinType(),
                         leftDistributionSpec, rightDistributionSpec);
@@ -485,6 +492,53 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
         } else {
             return createPropertySetByDistribution(olapDistributionSpec);
         }
+    }
+
+    private Optional<HashDistributionDesc> computeLakeHashDistributionDesc(HashDistributionDesc require,
+                                                                           List<BucketProperty> bucketProperties,
+                                                                           Map<ColumnRefOperator, Column> map) {
+        ColumnRefSet requireColumnRefSet = ColumnRefSet.createByIds(
+                require.getDistributionCols().stream().map(DistributionCol::getColId).toList());
+
+        List<Column> bucketColumns = bucketProperties.stream().map(BucketProperty::getColumn).toList();
+        List<Integer> bucketColumnIds = new ArrayList<>();
+        for (Column column : bucketColumns) {
+            for (Map.Entry<ColumnRefOperator, Column> entry : map.entrySet()) {
+                if (entry.getKey().getName().equals(column.getName())) {
+                    bucketColumnIds.add(entry.getKey().getId());
+                    break;
+                }
+            }
+        }
+        ColumnRefSet bucketColumnRefSet = ColumnRefSet.createByIds(bucketColumnIds);
+        requireColumnRefSet.intersect(bucketColumnRefSet);
+        if (requireColumnRefSet.isEmpty()) {
+            return Optional.empty();
+        } else {
+            // respect the order of column shuffle
+            return Optional.of(new HashDistributionDesc(requireColumnRefSet.getStream().toList(), BUCKET_LOCAL));
+        }
+    }
+
+    @Override
+    public PhysicalPropertySet visitPhysicalIcebergScan(PhysicalIcebergScanOperator node, ExpressionContext context) {
+        // according bucket properties to compute distribution that meet requirement
+        DistributionSpec distributionSpec = requirements.getDistributionProperty().getSpec();
+        LOG.warn("tablename: " + node.getTable().getName() + ", requirement distribution type: " +
+                distributionSpec.toString());
+        if (distributionSpec instanceof HashDistributionSpec hashDistribution) {
+            IcebergTable table = (IcebergTable) node.getTable();
+            if (table.hasBucketProperties()) {
+                List<BucketProperty> properties = table.getBucketProperties();
+                Optional<HashDistributionDesc> hashDistributionDesc = computeLakeHashDistributionDesc(
+                        hashDistribution.getHashDistributionDesc(), properties, node.getColRefToColumnMetaMap());
+                if (hashDistributionDesc.isPresent()) {
+                    return createPropertySetByDistribution(new HashDistributionSpec(hashDistributionDesc.get()));
+                }
+            }
+            LOG.warn("requirement distribution is hash distribution, " + distributionSpec.toString());
+        }
+        return mergeCTEProperty(PhysicalPropertySet.EMPTY);
     }
 
     @Override

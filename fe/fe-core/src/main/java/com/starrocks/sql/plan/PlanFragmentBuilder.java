@@ -3054,16 +3054,34 @@ public class PlanFragmentBuilder {
 
         private boolean isColocateJoin(OptExpression optExpression) {
             // through the required properties type check if it is colocate join
-            return optExpression.getRequiredProperties().stream().allMatch(
-                    physicalPropertySet -> {
-                        if (!physicalPropertySet.getDistributionProperty().isShuffle()) {
-                            return false;
-                        }
-                        HashDistributionDesc.SourceType hashSourceType =
-                                ((HashDistributionSpec) (physicalPropertySet.getDistributionProperty().getSpec()))
-                                        .getHashDistributionDesc().getSourceType();
-                        return hashSourceType.equals(HashDistributionDesc.SourceType.LOCAL);
-                    });
+            //return optExpression.getRequiredProperties().stream().allMatch(
+            //        physicalPropertySet -> {
+            //            if (!physicalPropertySet.getDistributionProperty().isShuffle()) {
+            //                return false;
+            //            }
+            //            HashDistributionDesc.SourceType hashSourceType =
+            //                    ((HashDistributionSpec) (physicalPropertySet.getDistributionProperty().getSpec()))
+            //                            .getHashDistributionDesc().getSourceType();
+            //            return hashSourceType.equals(HashDistributionDesc.SourceType.LOCAL);
+            //        });
+
+            boolean allShuffle = optExpression.getRequiredProperties().stream().allMatch(
+                    physicalPropertySet -> physicalPropertySet.getDistributionProperty().isShuffle());
+            boolean allLocal = optExpression.getRequiredProperties().stream().allMatch(
+                    physicalPropertySet ->
+                            ((HashDistributionSpec) (physicalPropertySet.getDistributionProperty().getSpec()))
+                                    .getHashDistributionDesc().getSourceType()
+                                    .equals(HashDistributionDesc.SourceType.LOCAL));
+            if (allShuffle && allLocal) {
+                return true;
+            }
+            boolean allSameBucket = optExpression.getRequiredProperties().stream().allMatch(
+                    physicalPropertySet ->
+                            ((HashDistributionSpec) (physicalPropertySet.getDistributionProperty().getSpec()))
+                                    .getHashDistributionDesc().getSourceType()
+                                    .equals(HashDistributionDesc.SourceType.BUCKET_LOCAL));
+            //TODO and same bucket func
+            return allShuffle && allSameBucket;
         }
 
         public boolean isShuffleJoin(OptExpression optExpression) {

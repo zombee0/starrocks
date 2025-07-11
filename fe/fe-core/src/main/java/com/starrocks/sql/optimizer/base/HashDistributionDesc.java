@@ -26,6 +26,7 @@ import java.util.stream.Collectors;
 public class HashDistributionDesc {
     public enum SourceType {
         LOCAL, // hash property from scan node
+        BUCKET_LOCAL,
         // SHUFFLE AGG required contains column, like:
         // e.g. required SHUFFLE_AGG(a, b, c), child SHUFFLE_AGG(a), satisfy
         // e.g. required SHUFFLE_AGG(a, b, c), child SHUFFLE_AGG(b, a), satisfy
@@ -87,13 +88,14 @@ public class HashDistributionDesc {
         } else if (this.sourceType == SourceType.SHUFFLE_JOIN && (item.sourceType == SourceType.SHUFFLE_AGG ||
                 item.sourceType == SourceType.SHUFFLE_JOIN)) {
             return distributionColsContainsAll(item.distributionCols);
-        } else if (!this.sourceType.equals(item.sourceType) &&
-                this.sourceType != HashDistributionDesc.SourceType.LOCAL) {
+        } else if (!this.sourceType.equals(item.sourceType) && this.sourceType != SourceType.LOCAL &&
+                this.sourceType != SourceType.BUCKET_LOCAL) {
             return false;
         }
 
         // different columns size is allowed if this sourceType is LOCAL or SHUFFLE_AGG
-        if (SourceType.LOCAL.equals(sourceType) || SourceType.SHUFFLE_AGG.equals(sourceType)) {
+        if (SourceType.LOCAL.equals(sourceType) || SourceType.SHUFFLE_AGG.equals(sourceType) ||
+                SourceType.BUCKET_LOCAL.equals(sourceType)) {
             return distributionColsContainsAll(item.distributionCols);
         }
         return distributionColsEquals(item.distributionCols);
@@ -131,6 +133,10 @@ public class HashDistributionDesc {
 
     public boolean isLocal() {
         return this.sourceType == SourceType.LOCAL;
+    }
+
+    public boolean isBucketLocal() {
+        return this.sourceType == SourceType.BUCKET_LOCAL;
     }
 
     public boolean isShuffle() {

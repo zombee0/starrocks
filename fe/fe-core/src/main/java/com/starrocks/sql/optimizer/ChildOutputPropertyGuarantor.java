@@ -104,6 +104,9 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                                    List<DistributionCol> rightShuffleColumns) {
         HashDistributionDesc leftLocalDistributionDesc = leftLocalDistributionSpec.getHashDistributionDesc();
         HashDistributionDesc rightLocalDistributionDesc = rightLocalDistributionSpec.getHashDistributionDesc();
+        if (leftLocalDistributionDesc.isBucketLocal() && rightLocalDistributionDesc.isBucketLocal()) {
+            return canColocateForBucket(leftLocalDistributionDesc, rightLocalDistributionDesc);
+        }
 
         ColocateTableIndex colocateIndex = GlobalStateMgr.getCurrentState().getColocateTableIndex();
         EquivalentDescriptor leftDesc = leftLocalDistributionSpec.getEquivDesc();
@@ -152,6 +155,12 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
             }
         }
 
+        return true;
+    }
+
+    private boolean canColocateForBucket(HashDistributionDesc leftLocalDistributionDesc,
+                                         HashDistributionDesc rightLocalDistributionDesc) {
+        // TODO to check
         return true;
     }
 
@@ -483,7 +492,9 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                 return visitOperator(node, context);
             }
 
-            if (leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) {
+            if ((leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) ||
+                    // TODO: check bucket function
+                    (leftDistributionDesc.isBucketLocal() && rightDistributionDesc.isBucketLocal())) {
                 // colocate join
                 if (HintNode.HINT_JOIN_BUCKET.equals(hint) ||
                         !canColocateJoin(leftDistributionSpec, rightDistributionSpec, leftShuffleColumns,
