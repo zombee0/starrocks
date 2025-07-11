@@ -1630,6 +1630,13 @@ public class PlanFragmentBuilder {
 
             icebergScanNode.setLimit(node.getLimit());
             icebergScanNode.setDataCacheOptions(node.getDataCacheOptions());
+            if (expression.getOutputProperty().getDistributionProperty().isShuffle()) {
+                DistributionSpec distributionSpec = expression.getOutputProperty().getDistributionProperty().getSpec();
+                if (distributionSpec instanceof HashDistributionSpec) {
+                    HashDistributionSpec spec = (HashDistributionSpec) distributionSpec;
+                    LOG.warn("Iceberg scan node distribution spec: " + spec.toString());
+                }
+            }
 
             tupleDescriptor.computeMemLayout();
             context.getScanNodes().add(icebergScanNode);
