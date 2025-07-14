@@ -436,6 +436,9 @@ struct THdfsScanRange {
 
     // min/max value of slots
     35: optional map<i32, Exprs.TExprMinMaxValue> min_max_values;
+
+    // transformed bucket id
+    36: optional i32 bucket_id;
 }
 
 struct TBinlogScanRange {
