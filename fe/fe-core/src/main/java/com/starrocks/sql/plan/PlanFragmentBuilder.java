@@ -3123,10 +3123,9 @@ public class PlanFragmentBuilder {
             Optional<List<BucketProperty>> extractBucketProperties = stayFragment.extractBucketProperties();
             if (extractBucketProperties.isPresent()) {
                 List<BucketProperty> bucketProperties = extractBucketProperties.get();
-                removeFragment.getChild(0).
-                        setOutputPartition(new DataPartition(TPartitionType.BUCKET_SHUFFLE_HASH_PARTITIONED,
+                removeFragment.getChild(0)
+                        .setOutputPartition(new DataPartition(TPartitionType.BUCKET_SHUFFLE_HASH_PARTITIONED,
                                 removeFragment.getDataPartition().getPartitionExprs(), bucketProperties));
-
             } else {
                 removeFragment.getChild(0)
                         .setOutputPartition(new DataPartition(TPartitionType.BUCKET_SHUFFLE_HASH_PARTITIONED,
