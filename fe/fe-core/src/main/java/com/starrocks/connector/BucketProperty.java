@@ -15,25 +15,22 @@
 package com.starrocks.connector;
 
 import com.starrocks.catalog.Column;
+import com.starrocks.thrift.TBucketFunction;
 
 import java.util.Objects;
 
 public class BucketProperty {
-    public enum BucketFunction {
-        MURMUR3_X86_32,
-    }
-
-    private final BucketFunction bucketFunction;
+    private final TBucketFunction bucketFunction;
     private final int bucketNum;
     private final Column column;
 
-    public BucketProperty(BucketFunction bucketFunction, int bucketNum, Column column) {
+    public BucketProperty(TBucketFunction bucketFunction, int bucketNum, Column column) {
         this.bucketFunction = bucketFunction;
         this.bucketNum = bucketNum;
         this.column = column;
     }
 
-    public BucketFunction getBucketFunction() {
+    public TBucketFunction getBucketFunction() {
         return bucketFunction;
     }
 

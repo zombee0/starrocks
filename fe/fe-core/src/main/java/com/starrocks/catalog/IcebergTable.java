@@ -40,6 +40,7 @@ import com.starrocks.rpc.ConfigurableSerDesFactory;
 import com.starrocks.server.CatalogMgr;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.analyzer.SemanticException;
+import com.starrocks.thrift.TBucketFunction;
 import com.starrocks.thrift.TColumn;
 import com.starrocks.thrift.TCompressedPartitionMap;
 import com.starrocks.thrift.THdfsPartition;
@@ -332,7 +333,7 @@ public class IcebergTable extends Table {
 
         for (Pair<Integer, Integer> bucket : bucketSourceIdWithBucketNums) {
             Column column = getColumn(nativeTable.schema().findColumnName(bucket.first));
-            bucketProperties.add(new BucketProperty(BucketProperty.BucketFunction.MURMUR3_X86_32, bucket.second, column));
+            bucketProperties.add(new BucketProperty(TBucketFunction.MURMUR3_X86_32, bucket.second, column));
         }
 
         return bucketProperties;
