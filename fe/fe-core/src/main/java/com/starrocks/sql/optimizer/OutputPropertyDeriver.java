@@ -24,6 +24,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.system.SystemTable;
 import com.starrocks.connector.BucketProperty;
+import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.optimizer.base.CTEProperty;
 import com.starrocks.sql.optimizer.base.ColumnRefSet;
@@ -524,9 +525,10 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
     public PhysicalPropertySet visitPhysicalIcebergScan(PhysicalIcebergScanOperator node, ExpressionContext context) {
         // according bucket properties to compute distribution that meet requirement
         DistributionSpec distributionSpec = requirements.getDistributionProperty().getSpec();
-        LOG.warn("tablename: " + node.getTable().getName() + ", requirement distribution type: " +
+        LOG.debug("table name: " + node.getTable().getName() + ", requirement distribution type: " +
                 distributionSpec.toString());
-        if (distributionSpec instanceof HashDistributionSpec hashDistribution) {
+        if (ConnectContext.get().getSessionVariable().isEnableBucketAwareExecutionOnLake() &&
+                distributionSpec instanceof HashDistributionSpec hashDistribution) {
             IcebergTable table = (IcebergTable) node.getTable();
             if (table.hasBucketProperties()) {
                 List<BucketProperty> properties = table.getBucketProperties();
@@ -536,7 +538,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
                     return createPropertySetByDistribution(new HashDistributionSpec(hashDistributionDesc.get()));
                 }
             }
-            LOG.warn("requirement distribution is hash distribution, " + distributionSpec.toString());
+            LOG.debug("requirement distribution is hash distribution, " + distributionSpec.toString());
         }
         return mergeCTEProperty(PhysicalPropertySet.EMPTY);
     }
