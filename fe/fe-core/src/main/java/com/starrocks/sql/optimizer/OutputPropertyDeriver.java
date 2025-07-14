@@ -35,6 +35,7 @@ import com.starrocks.sql.optimizer.base.EmptyDistributionProperty;
 import com.starrocks.sql.optimizer.base.EmptySortProperty;
 import com.starrocks.sql.optimizer.base.EquivalentDescriptor;
 import com.starrocks.sql.optimizer.base.HashDistributionDesc;
+import com.starrocks.sql.optimizer.base.HashDistributionDescBP;
 import com.starrocks.sql.optimizer.base.HashDistributionSpec;
 import com.starrocks.sql.optimizer.base.PhysicalPropertySet;
 import com.starrocks.sql.optimizer.base.SortProperty;
@@ -75,6 +76,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -501,12 +503,14 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
         ColumnRefSet requireColumnRefSet = ColumnRefSet.createByIds(
                 require.getDistributionCols().stream().map(DistributionCol::getColId).toList());
 
-        List<Column> bucketColumns = bucketProperties.stream().map(BucketProperty::getColumn).toList();
         List<Integer> bucketColumnIds = new ArrayList<>();
-        for (Column column : bucketColumns) {
+        Map<Integer, Integer> id2Index = new HashMap<>();
+        for (int i = 0; i < bucketProperties.size(); i++) {
+            Column column = bucketProperties.get(i).getColumn();
             for (Map.Entry<ColumnRefOperator, Column> entry : map.entrySet()) {
                 if (entry.getKey().getName().equals(column.getName())) {
                     bucketColumnIds.add(entry.getKey().getId());
+                    id2Index.put(entry.getKey().getId(), i);
                     break;
                 }
             }
@@ -517,7 +521,11 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
             return Optional.empty();
         } else {
             // respect the order of column shuffle
-            return Optional.of(new HashDistributionDesc(requireColumnRefSet.getStream().toList(), BUCKET_LOCAL));
+            List<BucketProperty> usedBP = require.getDistributionCols().stream()
+                    .map(DistributionCol::getColId).filter(requireColumnRefSet::contains)
+                    .map(id2Index::get).map(bucketProperties::get).toList();
+            return Optional.of(new HashDistributionDescBP(
+                    requireColumnRefSet.getStream().toList(), BUCKET_LOCAL, usedBP));
         }
     }
 

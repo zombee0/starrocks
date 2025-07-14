@@ -146,6 +146,7 @@ import com.starrocks.sql.optimizer.base.DistributionCol;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
 import com.starrocks.sql.optimizer.base.EquivalentDescriptor;
 import com.starrocks.sql.optimizer.base.HashDistributionDesc;
+import com.starrocks.sql.optimizer.base.HashDistributionDescBP;
 import com.starrocks.sql.optimizer.base.HashDistributionSpec;
 import com.starrocks.sql.optimizer.base.OrderSpec;
 import com.starrocks.sql.optimizer.base.Ordering;
@@ -1633,9 +1634,12 @@ public class PlanFragmentBuilder {
             icebergScanNode.setDataCacheOptions(node.getDataCacheOptions());
             if (expression.getOutputProperty().getDistributionProperty().isShuffle()) {
                 DistributionSpec distributionSpec = expression.getOutputProperty().getDistributionProperty().getSpec();
-                if (distributionSpec instanceof HashDistributionSpec) {
-                    HashDistributionSpec spec = (HashDistributionSpec) distributionSpec;
-                    LOG.warn("Iceberg scan node distribution spec: " + spec.toString());
+                if (distributionSpec instanceof HashDistributionSpec spec) {
+                    HashDistributionDesc desc = spec.getHashDistributionDesc();
+                    LOG.debug("Iceberg scan node distribution spec: " + spec.toString() + ", desc: " + desc.toString());
+                    if (desc instanceof HashDistributionDescBP descBP) {
+                        icebergScanNode.setBucketProperties(descBP.getBucketProperties());
+                    }
                 }
             }
 
