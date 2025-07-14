@@ -21,6 +21,7 @@ import com.starrocks.analysis.TupleDescriptor;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.StarRocksException;
+import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.CatalogConnector;
 import com.starrocks.connector.ConnectorMetadatRequestContext;
 import com.starrocks.connector.GetRemoteFilesParams;
@@ -69,6 +70,7 @@ public class IcebergScanNode extends ScanNode {
     private final IcebergTableMORParams tableFullMORParams;
     private final IcebergMORParams morParams;
     private int selectedPartitionCount = -1;
+    private Optional<List<BucketProperty>> bucketProperties = Optional.empty();
 
     public IcebergScanNode(PlanNodeId id, TupleDescriptor desc, String planNodeName,
                            IcebergTableMORParams tableFullMORParams, IcebergMORParams morParams) {
@@ -200,6 +202,15 @@ public class IcebergScanNode extends ScanNode {
 
     public HDFSScanNodePredicates getScanNodePredicates() {
         return scanNodePredicates;
+    }
+
+    public void setBucketProperties(List<BucketProperty> bucketProperties) {
+        this.bucketProperties = Optional.of(bucketProperties);
+    }
+
+    @Override
+    public Optional<List<BucketProperty>> getBucketProperties() {
+        return this.bucketProperties;
     }
 
     @Override

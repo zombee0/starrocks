@@ -42,10 +42,13 @@ import com.starrocks.analysis.Analyzer;
 import com.starrocks.analysis.Expr;
 import com.starrocks.analysis.ExprSubstitutionMap;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.connector.BucketProperty;
+import com.starrocks.thrift.TBucketFunction;
 import com.starrocks.thrift.TDataPartition;
 import com.starrocks.thrift.TExplainLevel;
 import com.starrocks.thrift.TPartitionType;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -67,6 +70,8 @@ public class DataPartition {
 
     // for hash partition: exprs used to compute hash value
     private ImmutableList<Expr> partitionExprs;
+    private List<TBucketFunction> bucketFuncs = new ArrayList<>();
+    private List<Integer> bucketNums = new ArrayList<>();
 
     public DataPartition(TPartitionType type, List<Expr> exprs) {
         if (type != TPartitionType.UNPARTITIONED && type != TPartitionType.RANDOM) {
@@ -81,6 +86,15 @@ public class DataPartition {
         } else {
             this.type = type;
             this.partitionExprs = ImmutableList.of();
+        }
+    }
+
+    public DataPartition(TPartitionType type, List<Expr> exprs, List<BucketProperty> bucketProperties) {
+        Preconditions.checkArgument(type.equals(TPartitionType.BUCKET_SHUFFLE_HASH_PARTITIONED));
+        this.type = type;
+        for (BucketProperty bucket : bucketProperties) {
+            this.bucketFuncs.add(bucket.getBucketFunction());
+            this.bucketNums.add(bucket.getBucketNum());
         }
     }
 
@@ -121,6 +135,10 @@ public class DataPartition {
         TDataPartition result = new TDataPartition(type);
         if (partitionExprs != null) {
             result.setPartition_exprs(Expr.treesToThrift(partitionExprs));
+        }
+        if (!bucketFuncs.isEmpty()) {
+            result.bucket_funcs.addAll(bucketFuncs);
+            result.bucket_num.addAll(bucketNums);
         }
         return result;
     }

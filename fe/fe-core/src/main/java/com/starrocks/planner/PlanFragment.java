@@ -43,6 +43,7 @@ import com.starrocks.common.Config;
 import com.starrocks.common.FeConstants;
 import com.starrocks.common.Pair;
 import com.starrocks.common.TreeNode;
+import com.starrocks.connector.BucketProperty;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.qe.SessionVariable;
 import com.starrocks.sql.optimizer.Utils;
@@ -68,6 +69,7 @@ import java.util.Deque;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -878,6 +880,15 @@ public class PlanFragment extends TreeNode<PlanFragment> {
         }
 
         return scanNodes;
+    }
+
+    public Optional<List<BucketProperty>> extractBucketProperties() {
+        List<List<BucketProperty>> properties = collectScanNodes().values().stream()
+                .map(ScanNode::getBucketProperties).filter(Optional::isPresent).map(Optional::get).toList();
+        if (properties.size() != 1) {
+            // TODO something wrong
+        }
+        return Optional.of(properties.get(0));
     }
 
     public boolean isUnionFragment() {
