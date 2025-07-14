@@ -30,9 +30,11 @@ import com.starrocks.catalog.PartitionKey;
 import com.starrocks.catalog.Table;
 import com.starrocks.catalog.Type;
 import com.starrocks.common.AnalysisException;
+import com.starrocks.common.Pair;
 import com.starrocks.common.profile.Timer;
 import com.starrocks.common.profile.Tracers;
 import com.starrocks.common.util.TimeUtils;
+import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.ConnectorScanRangeSource;
 import com.starrocks.connector.PartitionUtil;
 import com.starrocks.connector.RemoteFileInfo;
@@ -72,6 +74,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
@@ -85,6 +88,7 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
     private final IcebergTable table;
     private final TupleDescriptor desc;
     private final IcebergMORParams morParams;
+    private final Optional<List<BucketProperty>> bucketProperties;
     private final RemoteFileInfoSource remoteFileInfoSource;
     private final AtomicLong partitionIdGen = new AtomicLong(0L);
 
@@ -101,15 +105,20 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
     private final Map<Integer, List<Integer>> indexesCache = Maps.newHashMap();
     private final Set<String> seenEqDeleteFiles = new HashSet<>();
     private final List<Integer> extendedColumnSlotIds = new ArrayList<>();
+    // index -> field pos & bucket num
+    private final List<Pair<Integer, Integer>> bucketInfo = new ArrayList<>();
 
     public IcebergConnectorScanRangeSource(IcebergTable table,
                                            RemoteFileInfoSource remoteFileInfoSource,
                                            IcebergMORParams morParams,
-                                           TupleDescriptor desc) {
+                                           TupleDescriptor desc,
+                                           Optional<List<BucketProperty>> bucketProperties) {
         this.table = table;
         this.remoteFileInfoSource = remoteFileInfoSource;
         this.morParams = morParams;
         this.desc = desc;
+        this.bucketProperties = bucketProperties;
+        initBucketInfo();
     }
 
     @Override
@@ -131,6 +140,15 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
             }
             return res;
         }
+    }
+
+    private void initBucketInfo() {
+        if (bucketProperties.isPresent()) {
+            for (PartitionField field : table.getNativeTable().spec().fields()) {
+                field.name()
+            }
+        }
+        return;
     }
 
     private List<TScanRangeLocations> toScanRanges(FileScanTask fileScanTask) {
@@ -251,6 +269,10 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
             }
         }
 
+        if (bucketProperties.isPresent()) {
+            hdfsScanRange.setBucket_id(extractBucketId(task));
+        }
+
         hdfsScanRange.setExtended_columns(extendedColumns);
         hdfsScanRange.setRecord_count(file.recordCount());
         hdfsScanRange.setIs_first_split(isFirstSplit);
@@ -263,6 +285,15 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
             hdfsScanRange.setMin_max_values(tExprMinMaxValueMap);
         }
         return hdfsScanRange;
+    }
+
+    private int extractBucketId(FileScanTask task) {
+        int bucketValue = task.partition().get(bucketInfo.get(0).first, Integer.class);
+        for (int i = 1; i < bucketInfo.size(); i++) {
+            bucketValue = task.partition().get(bucketInfo.get(i).first, Integer.class) +
+                    bucketValue * (bucketInfo.get(i - 1).second);
+        }
+        return bucketValue;
     }
 
     protected TScanRangeLocations buildTScanRangeLocations(THdfsScanRange hdfsScanRange) {
