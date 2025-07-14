@@ -3087,7 +3087,7 @@ public class PlanFragmentBuilder {
                             ((HashDistributionSpec) (physicalPropertySet.getDistributionProperty().getSpec()))
                                     .getHashDistributionDesc().getSourceType()
                                     .equals(HashDistributionDesc.SourceType.BUCKET_LOCAL));
-            //TODO and same bucket func
+            //TODO check the bucket func is same
             return allShuffle && allSameBucket;
         }
 
