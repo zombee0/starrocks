@@ -144,11 +144,16 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
 
     private void initBucketInfo() {
         if (bucketProperties.isPresent()) {
-            for (PartitionField field : table.getNativeTable().spec().fields()) {
-                field.name()
+            List<PartitionField> fields = table.getNativeTable().spec().fields();
+            for (BucketProperty bucket : bucketProperties.get()) {
+                for (int i = 0; i < fields.size(); i++) {
+                    if (fields.get(i).name().equals(bucket.getColumn().getName())) {
+                        bucketInfo.add(new Pair<>(i, bucket.getBucketNum()));
+                        break;
+                    }
+                }
             }
         }
-        return;
     }
 
     private List<TScanRangeLocations> toScanRanges(FileScanTask fileScanTask) {
