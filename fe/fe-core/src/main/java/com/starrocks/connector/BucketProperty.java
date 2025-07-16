@@ -42,6 +42,10 @@ public class BucketProperty {
         return column;
     }
 
+    public boolean satisfy(BucketProperty bp) {
+        return bucketFunction.getValue() == bp.bucketFunction.getValue() && bucketNum == bp.bucketNum;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {

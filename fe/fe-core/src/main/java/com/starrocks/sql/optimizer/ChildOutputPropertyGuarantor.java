@@ -20,6 +20,7 @@ import com.google.common.collect.Lists;
 import com.starrocks.analysis.HintNode;
 import com.starrocks.catalog.ColocateTableIndex;
 import com.starrocks.common.Pair;
+import com.starrocks.connector.BucketProperty;
 import com.starrocks.qe.ConnectContext;
 import com.starrocks.server.GlobalStateMgr;
 import com.starrocks.sql.optimizer.base.DistributionCol;
@@ -27,6 +28,7 @@ import com.starrocks.sql.optimizer.base.DistributionProperty;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
 import com.starrocks.sql.optimizer.base.EquivalentDescriptor;
 import com.starrocks.sql.optimizer.base.HashDistributionDesc;
+import com.starrocks.sql.optimizer.base.HashDistributionDescBP;
 import com.starrocks.sql.optimizer.base.HashDistributionSpec;
 import com.starrocks.sql.optimizer.base.PhysicalPropertySet;
 import com.starrocks.sql.optimizer.base.RoundRobinDistributionSpec;
@@ -161,6 +163,22 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
     private boolean canColocateForBucket(HashDistributionDesc leftLocalDistributionDesc,
                                          HashDistributionDesc rightLocalDistributionDesc) {
         // TODO to check
+        Preconditions.checkArgument(leftLocalDistributionDesc instanceof HashDistributionDescBP,
+                "Bucket aware execution with wrong HashDistributionDesc");
+        Preconditions.checkArgument(rightLocalDistributionDesc instanceof HashDistributionDescBP,
+                "Bucket aware execution with wrong HashDistributionDesc");
+        List<BucketProperty> leftBP = ((HashDistributionDescBP) leftLocalDistributionDesc).getBucketProperties();
+        List<BucketProperty> rightBP = ((HashDistributionDescBP) rightLocalDistributionDesc).getBucketProperties();
+        if (leftBP.size() != rightBP.size()) {
+            return false;
+        }
+        for (int i = 0; i < leftBP.size(); i++) {
+            BucketProperty leftProperty = leftBP.get(i);
+            BucketProperty rightProperty = rightBP.get(i);
+            if (!leftProperty.satisfy(rightProperty)) {
+                return false;
+            }
+        }
         return true;
     }
 
