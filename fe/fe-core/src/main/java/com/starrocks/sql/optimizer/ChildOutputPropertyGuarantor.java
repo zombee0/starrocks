@@ -106,7 +106,7 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                                    List<DistributionCol> rightShuffleColumns) {
         HashDistributionDesc leftLocalDistributionDesc = leftLocalDistributionSpec.getHashDistributionDesc();
         HashDistributionDesc rightLocalDistributionDesc = rightLocalDistributionSpec.getHashDistributionDesc();
-        if (leftLocalDistributionDesc.isBucketLocal() && rightLocalDistributionDesc.isBucketLocal()) {
+        if (leftLocalDistributionDesc.isBucketLocal() || rightLocalDistributionDesc.isBucketLocal()) {
             return canColocateForBucket(leftLocalDistributionDesc, rightLocalDistributionDesc);
         }
 
@@ -162,7 +162,10 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
 
     private boolean canColocateForBucket(HashDistributionDesc leftLocalDistributionDesc,
                                          HashDistributionDesc rightLocalDistributionDesc) {
-        // TODO to check
+        // if any one is not bucket local return false
+        if (!leftLocalDistributionDesc.isBucketLocal() || !leftLocalDistributionDesc.isBucketLocal()) {
+            return false;
+        }
         Preconditions.checkArgument(leftLocalDistributionDesc instanceof HashDistributionDescBP,
                 "Bucket aware execution with wrong HashDistributionDesc");
         Preconditions.checkArgument(rightLocalDistributionDesc instanceof HashDistributionDescBP,
