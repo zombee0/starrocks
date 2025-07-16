@@ -1619,6 +1619,17 @@ public class PlanFragmentBuilder {
                         ((PhysicalIcebergEqualityDeleteScanOperator) node).getOriginPredicate();
                 icebergScanNode.preProcessIcebergPredicate(icebergPredicate);
                 icebergScanNode.setSnapshotId(node.getTableVersionRange().end());
+                // setting bucket properties before setting scan range locations
+                if (expression.getOutputProperty().getDistributionProperty().isShuffle()) {
+                    DistributionSpec distributionSpec = expression.getOutputProperty().getDistributionProperty().getSpec();
+                    if (distributionSpec instanceof HashDistributionSpec spec) {
+                        HashDistributionDesc desc = spec.getHashDistributionDesc();
+                        LOG.debug("Iceberg scan node distribution spec: " + spec.toString() + ", desc: " + desc.toString());
+                        if (desc instanceof HashDistributionDescBP descBP) {
+                            icebergScanNode.setBucketProperties(descBP.getBucketProperties());
+                        }
+                    }
+                }
                 icebergScanNode.setupScanRangeLocations(
                         context.getConnectContext().getSessionVariable().isEnableConnectorIncrementalScanRanges());
                 if (!isEqDeleteScan) {
@@ -1632,16 +1643,6 @@ public class PlanFragmentBuilder {
 
             icebergScanNode.setLimit(node.getLimit());
             icebergScanNode.setDataCacheOptions(node.getDataCacheOptions());
-            if (expression.getOutputProperty().getDistributionProperty().isShuffle()) {
-                DistributionSpec distributionSpec = expression.getOutputProperty().getDistributionProperty().getSpec();
-                if (distributionSpec instanceof HashDistributionSpec spec) {
-                    HashDistributionDesc desc = spec.getHashDistributionDesc();
-                    LOG.debug("Iceberg scan node distribution spec: " + spec.toString() + ", desc: " + desc.toString());
-                    if (desc instanceof HashDistributionDescBP descBP) {
-                        icebergScanNode.setBucketProperties(descBP.getBucketProperties());
-                    }
-                }
-            }
 
             tupleDescriptor.computeMemLayout();
             context.getScanNodes().add(icebergScanNode);

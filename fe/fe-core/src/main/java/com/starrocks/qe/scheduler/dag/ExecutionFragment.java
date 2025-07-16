@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.common.util.DebugUtil;
+import com.starrocks.connector.BucketProperty;
 import com.starrocks.planner.ExchangeNode;
 import com.starrocks.planner.JoinNode;
 import com.starrocks.planner.OlapScanNode;
@@ -167,10 +168,34 @@ public class ExecutionFragment {
         return colocatedAssignment;
     }
 
-    public ColocatedBackendSelector.Assignment getOrCreateColocatedAssignment(OlapScanNode scanNode) {
+    //public ColocatedBackendSelector.Assignment getOrCreateColocatedAssignment(OlapScanNode scanNode) {
+    //    if (colocatedAssignment == null) {
+    //        final int numOlapScanNodes = scanNodes.values().stream().mapToInt(node -> node instanceof OlapScanNode ? 1 : 0).sum();
+    //        colocatedAssignment = new ColocatedBackendSelector.Assignment(scanNode, numOlapScanNodes);
+    //    }
+    //    return colocatedAssignment;
+    //}
+
+    public ColocatedBackendSelector.Assignment getOrCreateColocatedAssignment(ScanNode scanNode) {
         if (colocatedAssignment == null) {
-            final int numOlapScanNodes = scanNodes.values().stream().mapToInt(node -> node instanceof OlapScanNode ? 1 : 0).sum();
-            colocatedAssignment = new ColocatedBackendSelector.Assignment(scanNode, numOlapScanNodes);
+            final int numScanNodes = scanNodes.size();
+            int bucketNum;
+            ColocatedBackendSelector.Assignment.ScanRangeType type;
+            if (scanNode instanceof OlapScanNode olapScanNode) {
+                type = ColocatedBackendSelector.Assignment.ScanRangeType.NATIVE;
+                bucketNum = olapScanNode.getOlapTable().getDefaultDistributionInfo().getBucketNum();
+                if (olapScanNode.getSelectedPartitionIds().size() <= 1) {
+                    for (Long pid : olapScanNode.getSelectedPartitionIds()) {
+                        bucketNum = olapScanNode.getOlapTable().getPartition(pid).getDistributionInfo().getBucketNum();
+                    }
+                }
+            } else {
+                Preconditions.checkArgument(scanNode.getBucketProperties().isPresent());
+                type = ColocatedBackendSelector.Assignment.ScanRangeType.NONNATIVE;
+                bucketNum = scanNode.getBucketProperties().get().stream().map(
+                        BucketProperty::getBucketNum).reduce(1, (a, b) -> a * b);
+            }
+            colocatedAssignment = new ColocatedBackendSelector.Assignment(bucketNum, numScanNodes, type);
         }
         return colocatedAssignment;
     }

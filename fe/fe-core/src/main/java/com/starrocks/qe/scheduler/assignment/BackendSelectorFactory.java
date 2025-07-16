@@ -45,7 +45,7 @@ public class BackendSelectorFactory {
                                          ConnectContext connectContext,
                                          Set<Integer> destReplicatedScanIds,
                                          boolean useIncrementalScanRanges) {
-         SessionVariable sessionVariable = connectContext.getSessionVariable();
+        SessionVariable sessionVariable = connectContext.getSessionVariable();
         FragmentScanRangeAssignment assignment = execFragment.getScanRangeAssignment();
 
         // The parameters of getScanRangeLocations may ignore, It doesn't take effect.
@@ -65,7 +65,11 @@ public class BackendSelectorFactory {
             boolean hasColocate = execFragment.isColocated();
             boolean hasBucket = execFragment.isLocalBucketShuffleJoin();
             if (hasColocate || hasBucket) {
-                return new BucketBackendSelector(scanNode, locations, assignment, workerProvider,
+                ColocatedBackendSelector.Assignment colocatedAssignment =
+                        execFragment.getOrCreateColocatedAssignment(scanNode);
+                boolean isRightOrFullBucketShuffleFragment = execFragment.isRightOrFullBucketShuffle();
+                return new BucketBackendSelector(scanNode, locations, assignment, colocatedAssignment,
+                        isRightOrFullBucketShuffleFragment, workerProvider,
                         useIncrementalScanRanges, connectContext);
             }
             return new HDFSBackendSelector(scanNode, locations, assignment, workerProvider,
@@ -81,7 +85,7 @@ public class BackendSelectorFactory {
                         execFragment.getColocatedAssignment());
             } else if (hasColocate || hasBucket) {
                 ColocatedBackendSelector.Assignment colocatedAssignment =
-                        execFragment.getOrCreateColocatedAssignment((OlapScanNode) scanNode);
+                        execFragment.getOrCreateColocatedAssignment(scanNode);
                 boolean isRightOrFullBucketShuffleFragment = execFragment.isRightOrFullBucketShuffle();
                 return new ColocatedBackendSelector((OlapScanNode) scanNode, assignment,
                         colocatedAssignment, isRightOrFullBucketShuffleFragment, workerProvider,

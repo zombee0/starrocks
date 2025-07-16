@@ -147,7 +147,7 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
             List<PartitionField> fields = table.getNativeTable().spec().fields();
             for (BucketProperty bucket : bucketProperties.get()) {
                 for (int i = 0; i < fields.size(); i++) {
-                    if (fields.get(i).name().equals(bucket.getColumn().getName())) {
+                    if (fields.get(i).name().equals(bucket.getColumn().getName() + "_bucket")) {
                         bucketInfo.add(new Pair<>(i, bucket.getBucketNum()));
                         break;
                     }
