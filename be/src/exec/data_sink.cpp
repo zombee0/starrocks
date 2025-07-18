@@ -518,6 +518,16 @@ OperatorFactoryPtr DataSink::_create_exchange_sink_operator(pipeline::PipelineBu
         DCHECK_GT(dest_dop, 0);
     }
 
+    std::vector<TBucketFunction::type> bucket_funcs;
+    std::vector<int32_t> bucket_modulus;
+    if (sender->get_partition_type() == TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED) {
+        if (stream_sink.output_partition.__isset.bucket_funcs) {
+            bucket_funcs = stream_sink.output_partition.bucket_funcs;
+            // TODO rename it
+            bucket_modulus = stream_sink.output_partition.bucket_num;
+        }
+    }
+
     std::shared_ptr<SinkBuffer> sink_buffer =
             std::make_shared<SinkBuffer>(fragment_ctx, sender->destinations(), is_dest_merge);
 
@@ -526,7 +536,8 @@ OperatorFactoryPtr DataSink::_create_exchange_sink_operator(pipeline::PipelineBu
             sender->destinations(), is_pipeline_level_shuffle, dest_dop, sender->sender_id(),
             sender->get_dest_node_id(), sender->get_partition_exprs(),
             !is_dest_merge && sender->get_enable_exchange_pass_through(),
-            sender->get_enable_exchange_perf() && !context->has_aggregation, fragment_ctx, sender->output_columns());
+            sender->get_enable_exchange_perf() && !context->has_aggregation, fragment_ctx, sender->output_columns(),
+            bucket_funcs, bucket_modulus);
     return exchange_sink;
 }
 
