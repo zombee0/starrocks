@@ -315,9 +315,10 @@ public class IcebergTable extends Table {
         if (hasBucketProperties.isEmpty()) {
             if (getNativeTable().specs().size() != 1) {
                 hasBucketProperties = Optional.of(false);
+            } else {
+                PartitionSpec spec = getNativeTable().spec();
+                hasBucketProperties = Optional.of(spec.isPartitioned() && Partitioning.hasBucketField(spec));
             }
-            PartitionSpec spec = getNativeTable().spec();
-            hasBucketProperties = Optional.of(spec.isPartitioned() && Partitioning.hasBucketField(spec));
         }
 
         return hasBucketProperties.get();

@@ -46,6 +46,10 @@ public class BucketProperty {
         return bucketFunction.getValue() == bp.bucketFunction.getValue() && bucketNum == bp.bucketNum;
     }
 
+    public String toString() {
+        return bucketFunction.toString() + ", " + bucketNum;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) {

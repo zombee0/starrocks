@@ -513,9 +513,7 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                 return visitOperator(node, context);
             }
 
-            if ((leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) ||
-                    // TODO: check bucket function
-                    (leftDistributionDesc.isBucketLocal() && rightDistributionDesc.isBucketLocal())) {
+            if (leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) {
                 // colocate join
                 if (HintNode.HINT_JOIN_BUCKET.equals(hint) ||
                         !canColocateJoin(leftDistributionSpec, rightDistributionSpec, leftShuffleColumns,

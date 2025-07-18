@@ -343,9 +343,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
             HashDistributionDesc leftDistributionDesc = leftDistributionSpec.getHashDistributionDesc();
             HashDistributionDesc rightDistributionDesc = rightDistributionSpec.getHashDistributionDesc();
 
-            if ((leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal()) ||
-                    //TODO bucket function
-                    (leftDistributionDesc.isBucketLocal() && rightDistributionDesc.isBucketLocal())) {
+            if ((leftDistributionDesc.isLocal() && rightDistributionDesc.isLocal())) {
                 // colocate join
                 PhysicalPropertySet outputProperty = computeColocateJoinOutputProperty(node.getJoinType(),
                         leftDistributionSpec, rightDistributionSpec);

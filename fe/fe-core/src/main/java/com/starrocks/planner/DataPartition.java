@@ -92,6 +92,7 @@ public class DataPartition {
     public DataPartition(TPartitionType type, List<Expr> exprs, List<BucketProperty> bucketProperties) {
         Preconditions.checkArgument(type.equals(TPartitionType.BUCKET_SHUFFLE_HASH_PARTITIONED));
         this.type = type;
+        this.partitionExprs = ImmutableList.copyOf(exprs);
         for (BucketProperty bucket : bucketProperties) {
             this.bucketFuncs.add(bucket.getBucketFunction());
             this.bucketNums.add(bucket.getBucketNum());

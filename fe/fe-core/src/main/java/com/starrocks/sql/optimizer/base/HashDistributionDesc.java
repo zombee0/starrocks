@@ -132,7 +132,7 @@ public class HashDistributionDesc {
     }
 
     public boolean isLocal() {
-        return this.sourceType == SourceType.LOCAL;
+        return this.sourceType == SourceType.LOCAL || this.sourceType == SourceType.BUCKET_LOCAL;
     }
 
     public boolean isBucketLocal() {
