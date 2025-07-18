@@ -604,13 +604,13 @@ Status ExchangeSinkOperator::push_chunk(RuntimeState* state, const ChunkPtr& chu
                         for (int j = 0; j < num_rows; j++) {
                             _hash_values[j] ^= _round_hashes[j];
                             auto id = (_round_hashes[j] & std::numeric_limits<int>::max()) % _bucket_modulus[i];
-                            _bucket_ids[i] = id;
+                            _bucket_ids[j] = id;
                         }
                     } else {
                         for (int j = 0; j < num_rows; j++) {
                             _hash_values[j] ^= _round_hashes[j];
                             auto id = (_round_hashes[j] & std::numeric_limits<int>::max()) % _bucket_modulus[i];
-                            _bucket_ids[i] = id + _bucket_ids * _bucket_modulus[i - 1];
+                            _bucket_ids[j] = id + _bucket_ids[j] * _bucket_modulus[i - 1];
                         }
                     }
                 }

@@ -138,8 +138,8 @@ public class DataPartition {
             result.setPartition_exprs(Expr.treesToThrift(partitionExprs));
         }
         if (!bucketFuncs.isEmpty()) {
-            result.bucket_funcs.addAll(bucketFuncs);
-            result.bucket_num.addAll(bucketNums);
+            result.setBucket_funcs(bucketFuncs);
+            result.setBucket_num(bucketNums);
         }
         return result;
     }

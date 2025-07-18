@@ -134,6 +134,7 @@ ConnectorScanOperatorFactory::ConnectorScanOperatorFactory(int32_t id, ScanNode*
                         dop, std::move(buffer_limiter)) {
     _io_tasks_mem_limiter = state->obj_pool()->add(
             new ConnectorScanOperatorIOTasksMemLimiter(dop, scan_node->is_shared_scan_enabled()));
+    _partition_type = TPartitionType::BUCKET_SHUFFLE_HASH_PARTITIONED;
 }
 
 Status ConnectorScanOperatorFactory::do_prepare(RuntimeState* state) {
@@ -157,6 +158,12 @@ const std::vector<ExprContext*>& ConnectorScanOperatorFactory::partition_exprs()
     auto* connector_scan_node = down_cast<ConnectorScanNode*>(_scan_node);
     auto* provider = connector_scan_node->data_source_provider();
     return provider->partition_exprs();
+}
+
+const std::vector<TBucketProperty>& ConnectorScanOperatorFactory::get_bucket_properties() const {
+    auto* connector_scan_node = down_cast<ConnectorScanNode*>(_scan_node);
+    auto* provider = connector_scan_node->data_source_provider();
+    return provider->get_bucket_properties();
 }
 
 void ConnectorScanOperatorFactory::set_chunk_source_mem_bytes(int64_t value) {

@@ -1229,8 +1229,7 @@ struct THdfsScanNode {
     23: optional list<Types.TSlotId> extended_slot_ids;
 
     24: optional bool can_use_count_opt;
-    25: optional list<TBucketFunction> bucket_funcs;
-    26: optional list<i32> bucket_num;
+    25: optional list<Partitions.TBucketProperty> bucket_properties;
 }
 
 struct TProjectNode {
