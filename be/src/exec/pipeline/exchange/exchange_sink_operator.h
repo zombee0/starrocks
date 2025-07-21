@@ -53,8 +53,7 @@ public:
                          const std::vector<ExprContext*>& partition_expr_ctxs, bool enable_exchange_pass_through,
                          bool enable_exchange_perf, FragmentContext* const fragment_ctx,
                          const std::vector<int32_t>& output_columns,
-                         const std::vector<TBucketFunction::type>& bucket_funcs,
-                         const std::vector<int32_t>& bucket_modulus, std::atomic<int32_t>& num_sinkers);
+                         const std::vector<TBucketProperty>& bucket_properties, std::atomic<int32_t>& num_sinkers);
 
     ~ExchangeSinkOperator() override = default;
 
@@ -213,8 +212,7 @@ private:
     FragmentContext* const _fragment_ctx;
 
     const std::vector<int32_t>& _output_columns;
-    const std::vector<TBucketFunction::type>& _bucket_funcs;
-    const std::vector<int32_t>& _bucket_modulus;
+    const std::vector<TBucketProperty>& _bucket_properties;
     std::vector<uint32_t> _round_hashes;
     std::vector<uint32_t> _bucket_ids;
 
@@ -233,7 +231,7 @@ public:
                                 PlanNodeId dest_node_id, std::vector<ExprContext*> partition_expr_ctxs,
                                 bool enable_exchange_pass_through, bool enable_exchange_perf,
                                 FragmentContext* const fragment_ctx, std::vector<int32_t> output_columns,
-                                std::vector<TBucketFunction::type> bucket_funcs, std::vector<int32_t> bucket_modulus);
+                                std::vector<TBucketProperty> bucket_properties);
 
     ~ExchangeSinkOperatorFactory() override = default;
 
@@ -266,8 +264,7 @@ private:
     FragmentContext* const _fragment_ctx;
 
     const std::vector<int32_t> _output_columns;
-    const std::vector<TBucketFunction::type> _bucket_funcs;
-    const std::vector<int32_t> _bucket_modulus;
+    const std::vector<TBucketProperty> _bucket_properties;
 
     std::atomic<int32_t> _num_sinkers = 0;
 };
