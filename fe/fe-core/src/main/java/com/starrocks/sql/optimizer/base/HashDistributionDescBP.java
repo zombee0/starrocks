@@ -29,6 +29,11 @@ public class HashDistributionDescBP extends HashDistributionDesc {
                 "distribution cols don't match");
     }
 
+    private HashDistributionDescBP(HashDistributionDesc desc, List<BucketProperty> bucketProperties) {
+        super(desc.getDistributionCols(), desc.getSourceType());
+        this.bucketProperties = bucketProperties;
+    }
+
     public List<BucketProperty> getBucketProperties() {
         return bucketProperties;
     }
@@ -36,5 +41,15 @@ public class HashDistributionDescBP extends HashDistributionDesc {
     @Override
     public boolean isBucketLocal() {
         return true;
+    }
+
+    @Override
+    public HashDistributionDescBP getNullRelaxDesc() {
+        return new HashDistributionDescBP(super.getNullRelaxDesc(), bucketProperties);
+    }
+
+    @Override
+    public HashDistributionDescBP getNullStrictDesc() {
+        return new HashDistributionDescBP(super.getNullStrictDesc(), bucketProperties);
     }
 }
