@@ -85,7 +85,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkState;
-import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.BUCKET_LOCAL;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.LOCAL;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_AGG;
 import static com.starrocks.sql.optimizer.base.HashDistributionDesc.SourceType.SHUFFLE_JOIN;
@@ -523,7 +522,7 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
                     .map(DistributionCol::getColId).filter(requireColumnRefSet::contains)
                     .map(id2Index::get).map(bucketProperties::get).toList();
             return Optional.of(new HashDistributionDescBP(
-                    requireColumnRefSet.getStream().toList(), BUCKET_LOCAL, usedBP));
+                    requireColumnRefSet.getStream().toList(), LOCAL, usedBP));
         }
     }
 

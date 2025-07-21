@@ -32,4 +32,9 @@ public class HashDistributionDescBP extends HashDistributionDesc {
     public List<BucketProperty> getBucketProperties() {
         return bucketProperties;
     }
+
+    @Override
+    public boolean isBucketLocal() {
+        return true;
+    }
 }

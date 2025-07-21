@@ -107,7 +107,9 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
         HashDistributionDesc leftLocalDistributionDesc = leftLocalDistributionSpec.getHashDistributionDesc();
         HashDistributionDesc rightLocalDistributionDesc = rightLocalDistributionSpec.getHashDistributionDesc();
         if (leftLocalDistributionDesc.isBucketLocal() || rightLocalDistributionDesc.isBucketLocal()) {
-            return canColocateForBucket(leftLocalDistributionDesc, rightLocalDistributionDesc);
+            return canColocateForBucket(leftLocalDistributionDesc, rightLocalDistributionDesc) &&
+                    checkDistributionMatchShuffle(leftLocalDistributionSpec, rightLocalDistributionSpec,
+                            leftShuffleColumns, rightShuffleColumns);
         }
 
         ColocateTableIndex colocateIndex = GlobalStateMgr.getCurrentState().getColocateTableIndex();
@@ -140,6 +142,16 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
                     leftLocalDistributionSpec, rightLocalDistributionSpec);
         }
 
+        return checkDistributionMatchShuffle(leftLocalDistributionSpec, rightLocalDistributionSpec, leftShuffleColumns,
+                rightShuffleColumns);
+    }
+
+    private boolean checkDistributionMatchShuffle(HashDistributionSpec leftLocalDistributionSpec,
+                                                  HashDistributionSpec rightLocalDistributionSpec,
+                                                  List<DistributionCol> leftShuffleColumns,
+                                                  List<DistributionCol> rightShuffleColumns) {
+        HashDistributionDesc leftLocalDistributionDesc = leftLocalDistributionSpec.getHashDistributionDesc();
+        HashDistributionDesc rightLocalDistributionDesc = rightLocalDistributionSpec.getHashDistributionDesc();
         for (int i = 0; i < leftLocalDistributionDesc.getDistributionCols().size(); ++i) {
             DistributionCol leftCol = leftLocalDistributionDesc.getDistributionCols().get(i);
             DistributionCol rightCol = rightLocalDistributionDesc.getDistributionCols().get(i);
@@ -166,10 +178,6 @@ public class ChildOutputPropertyGuarantor extends PropertyDeriverBase<Void, Expr
         if (!leftLocalDistributionDesc.isBucketLocal() || !leftLocalDistributionDesc.isBucketLocal()) {
             return false;
         }
-        Preconditions.checkArgument(leftLocalDistributionDesc instanceof HashDistributionDescBP,
-                "Bucket aware execution with wrong HashDistributionDesc");
-        Preconditions.checkArgument(rightLocalDistributionDesc instanceof HashDistributionDescBP,
-                "Bucket aware execution with wrong HashDistributionDesc");
         List<BucketProperty> leftBP = ((HashDistributionDescBP) leftLocalDistributionDesc).getBucketProperties();
         List<BucketProperty> rightBP = ((HashDistributionDescBP) rightLocalDistributionDesc).getBucketProperties();
         if (leftBP.size() != rightBP.size()) {
