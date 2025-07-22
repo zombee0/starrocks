@@ -530,8 +530,6 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
     public PhysicalPropertySet visitPhysicalIcebergScan(PhysicalIcebergScanOperator node, ExpressionContext context) {
         // according bucket properties to compute distribution that meet requirement
         DistributionSpec distributionSpec = requirements.getDistributionProperty().getSpec();
-        LOG.debug("table name: " + node.getTable().getName() + ", requirement distribution type: " +
-                distributionSpec.toString());
         if (ConnectContext.get().getSessionVariable().isEnableBucketAwareExecutionOnLake() &&
                 distributionSpec instanceof HashDistributionSpec hashDistribution) {
             IcebergTable table = (IcebergTable) node.getTable();
@@ -543,7 +541,8 @@ public class OutputPropertyDeriver extends PropertyDeriverBase<PhysicalPropertyS
                     return createPropertySetByDistribution(new HashDistributionSpec(hashDistributionDesc.get()));
                 }
             }
-            LOG.debug("requirement distribution is hash distribution, " + distributionSpec.toString());
+            LOG.debug("table name: " + node.getTable().getName() + ", requirement distribution type: " +
+                    distributionSpec.toString());
         }
         return mergeCTEProperty(PhysicalPropertySet.EMPTY);
     }
