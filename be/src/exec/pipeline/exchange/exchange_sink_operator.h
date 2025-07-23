@@ -93,6 +93,7 @@ private:
         // ref olap_scan_node.cpp release_large_columns
         return sz > runtime_state()->chunk_size() * 512;
     }
+    void _calc_hash_values_and_bucket_ids();
 
 private:
     class Channel;
@@ -214,8 +215,8 @@ private:
     const std::vector<int32_t>& _output_columns;
     const std::vector<TBucketProperty>& _bucket_properties;
     std::vector<uint32_t> _round_hashes;
+    std::vector<uint32_t> _round_ids;
     std::vector<uint32_t> _bucket_ids;
-
 
     std::unique_ptr<Shuffler> _shuffler;
 

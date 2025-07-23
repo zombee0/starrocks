@@ -292,12 +292,19 @@ public class IcebergConnectorScanRangeSource extends ConnectorScanRangeSource {
         return hdfsScanRange;
     }
 
+    private int getCurBucketId(FileScanTask task, int i) {
+        Integer ret = task.partition().get(bucketInfo.get(i).first, Integer.class);
+        return ret == null ? bucketInfo.get(i).second : ret;
+    }
+
     private int extractBucketId(FileScanTask task) {
-        int bucketValue = task.partition().get(bucketInfo.get(0).first, Integer.class);
-        for (int i = 1; i < bucketInfo.size(); i++) {
-            bucketValue = task.partition().get(bucketInfo.get(i).first, Integer.class) +
-                    bucketValue * (bucketInfo.get(i - 1).second);
+        int bucketValue = 0;
+        int i = 0;
+        for (; i < bucketInfo.size() - 1; i++) {
+            int cur = getCurBucketId(task, i);
+            bucketValue = (bucketValue + cur) * (bucketInfo.get(i + 1).second + 1);
         }
+        bucketValue = bucketValue + getCurBucketId(task, i);
         return bucketValue;
     }
 
