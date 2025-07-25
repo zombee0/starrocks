@@ -230,10 +230,7 @@ public class HdfsScanNode extends ScanNode {
     public static void setBucketProperties(THdfsScanNode tHdfsScanNode, List<BucketProperty> bucketProperties) {
         List<TBucketProperty> tBucketProperties = new ArrayList<>();
         for (BucketProperty bucketProperty : bucketProperties) {
-            TBucketProperty tBucketProperty = new TBucketProperty();
-            tBucketProperty.setBucket_func(bucketProperty.getBucketFunction());
-            tBucketProperty.setBucket_num(bucketProperty.getBucketNum());
-            tBucketProperties.add(tBucketProperty);
+            tBucketProperties.add(bucketProperty.toThrift());
         }
         tHdfsScanNode.setBucket_properties(tBucketProperties);
     }

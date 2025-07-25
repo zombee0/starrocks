@@ -16,6 +16,7 @@ package com.starrocks.connector;
 
 import com.starrocks.catalog.Column;
 import com.starrocks.thrift.TBucketFunction;
+import com.starrocks.thrift.TBucketProperty;
 
 import java.util.Objects;
 
@@ -48,6 +49,13 @@ public class BucketProperty {
 
     public String toString() {
         return bucketFunction.toString() + ", " + bucketNum;
+    }
+
+    public TBucketProperty toThrift() {
+        TBucketProperty tBucketProperty = new TBucketProperty();
+        tBucketProperty.setBucket_func(bucketFunction);
+        tBucketProperty.setBucket_num(bucketNum);
+        return tBucketProperty;
     }
 
     @Override

@@ -93,10 +93,7 @@ public class DataPartition {
         this.type = type;
         this.partitionExprs = ImmutableList.copyOf(exprs);
         for (BucketProperty bucketProperty : bucketProperties) {
-            TBucketProperty tBucketProperty = new TBucketProperty();
-            tBucketProperty.setBucket_func(bucketProperty.getBucketFunction());
-            tBucketProperty.setBucket_num(bucketProperty.getBucketNum());
-            tBucketProperties.add(tBucketProperty);
+            tBucketProperties.add(bucketProperty.toThrift());
         }
     }
 
