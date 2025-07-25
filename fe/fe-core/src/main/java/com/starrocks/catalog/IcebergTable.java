@@ -334,6 +334,11 @@ public class IcebergTable extends Table {
 
         for (Pair<Integer, Integer> bucket : bucketSourceIdWithBucketNums) {
             Column column = getColumn(nativeTable.schema().findColumnName(bucket.first));
+            // the storage is very different, calc hash costs is cumbersome, and merely used in bucket partition,
+            // forbidden
+            if (column.getType().isDatetime() || column.getType().isDecimalOfAnyVersion()) {
+                continue;
+            }
             bucketProperties.add(new BucketProperty(TBucketFunction.MURMUR3_X86_32, bucket.second, column));
         }
 
