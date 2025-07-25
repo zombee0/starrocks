@@ -295,6 +295,21 @@ PARALLEL_TEST(NullableColumnTest, test_update_rows) {
     ASSERT_EQ("jk", column1->get(4).get_slice().to_string());
 }
 
+PARALLEL_TEST(NullableColumnTest, test_murmur_hash_varbinary) {
+    NullableColumn::Ptr c0 = NullableColumn::create(BinaryColumn::create(), NullColumn::create());
+
+    c0->append_datum({});
+    std::vector<uint8_t> data{0, 1, 2, 3};
+    Slice slice = Slice(data.data(), 4);
+    c0->append_strings(&slice, 4);
+
+    std::vector<uint32_t> hash_values(2);
+    c0->murmur_hash3_x86_32(hash_values.data(), 0, 2);
+
+    ASSERT_EQ(0, hash_values[0]);
+    ASSERT_EQ(-188683207, *reinterpret_cast<int32_t*>(&hash_values[1]));
+}
+
 PARALLEL_TEST(NullableColumnTest, test_xor_checksum) {
     NullableColumn::Ptr c0 = NullableColumn::create(Int32Column::create(), NullColumn::create());
 

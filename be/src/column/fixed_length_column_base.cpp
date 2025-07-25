@@ -300,19 +300,23 @@ template <typename T>
 void FixedLengthColumnBase<T>::murmur_hash3_x86_32(uint32_t* hash, uint32_t from, uint32_t to) const {
     for (uint32_t i = from; i < to; ++i) {
         int32_t hash_value = 0;
-        if constexpr (IsDate<T> || IsTimestamp<T>) {
-            std::string str = _data[i].to_string();
-            hash_value = HashUtil::murmur_hash3_32(str.data(), static_cast<int32_t>(str.size()), 0);
-        } else if constexpr (IsDecimal<T>) {
-            int32_t frac_val = _data[i].frac_value();
-            hash_value = HashUtil::murmur_hash3_32(&frac_val, sizeof(frac_val), 0);
+        if constexpr (IsDate<T>) {
+            // Julian Day -> epoch day
+            long long_value = _data[i].julian() - date::UNIX_EPOCH_JULIAN;
+            hash_value = HashUtil::murmur_hash3_32(&long_value, sizeof(int64_t), 0);
         } else if constexpr (std::is_same<T, int32_t>::value) {
             // Integer and long hash results must be identical for all integer values.
             // This ensures that schema evolution does not change bucket partition values if integer types are promoted.
             int64_t long_value = _data[i];
             hash_value = HashUtil::murmur_hash3_32(&long_value, sizeof(int64_t), 0);
-        } else {
+        } else if constexpr (std::is_same<T, int64_t>::value) {
             hash_value = HashUtil::murmur_hash3_32(&_data[i], sizeof(ValueType), 0);
+        }
+        else {
+            // for decimal/timestamp type, the storage is very different from iceberg,
+            // and consider they are merely used, these types are forbidden by fe
+            DCHECK(false);
+            return;
         }
         hash[i] = hash_value;
     }
